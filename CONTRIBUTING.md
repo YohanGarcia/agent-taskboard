@@ -18,9 +18,12 @@ Claude Code lays the API types into `.claude-plugin/types/` each time it loads t
 ```bash
 claude plugin validate .
 claude plugin test .
+npx -p typescript@5 tsc -p ci
 ```
 
-Both must pass. Add a test for the behaviour you change; the UI is covered by mounting the
+All three must pass. The last one is what CI runs: it type-checks `hooks/` and `types/` against
+a small stand-in for the API (`ci/stub.d.ts`), because CI cannot load the mod to lay down the
+real types. For the full check, load the mod and run `tsc -p .` as described above. Add a test for the behaviour you change; the UI is covered by mounting the
 pane in `tests/pane.test.ts`.
 
 ## Rules of the road

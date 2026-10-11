@@ -23,3 +23,6 @@ jobs:
 
       - name: Run the tests
         run: claude plugin test .
+
+      - name: Type-check against the stand-in API types
+        run: npx --yes -p typescript@5 tsc -p ci

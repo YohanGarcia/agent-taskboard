@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023"],
+    "jsx": "react",
+    "jsxFactory": "h",
+    "strict": true,
+    "noImplicitAny": false,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": []
+  },
+  "files": [
+    "stub.d.ts",
+    "../types/index.d.ts",
+    "../hooks/logic.ts",
+    "../hooks/i18n.ts",
+    "../hooks/register.tsx"
+  ]
+}
