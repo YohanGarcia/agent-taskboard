@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "agent-taskboard",
+  "description": "agent-taskboard: a live task board for Claude Code",
+  "owner": {
+    "name": "Yohan Garcia",
+    "url": "https://github.com/YohanGarcia"
+  },
+  "plugins": [
+    {
+      "name": "agent-taskboard",
+      "source": "./",
+      "description": "Plan before building, then follow every task, its status, time, subagents and checks in a side panel. Progress survives sessions.",
+      "category": "productivity"
+    }
+  ]
+}

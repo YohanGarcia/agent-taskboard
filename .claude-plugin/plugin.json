@@ -1,0 +1,65 @@
+{
+  "name": "agent-taskboard",
+  "version": "0.3.0",
+  "description": "A live task board for Claude Code: plans before building and shows every task, its status, time, subagents and checks in a side panel. Progress survives sessions.",
+  "author": {
+    "name": "Yohan Garcia",
+    "url": "https://github.com/YohanGarcia"
+  },
+  "homepage": "https://github.com/YohanGarcia/agent-taskboard",
+  "repository": "https://github.com/YohanGarcia/agent-taskboard",
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "claude-code-mod",
+    "claude-code-plugin",
+    "tasks",
+    "planning",
+    "dashboard",
+    "subagents",
+    "productivity"
+  ],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "openOnStart": {
+      "title": "Abrir al iniciar",
+      "description": "Abrir el panel del tablero al iniciar la sesión",
+      "type": "boolean",
+      "default": true
+    },
+    "minPromptChars": {
+      "title": "Umbral de complejidad",
+      "description": "Longitud mínima (caracteres) de una solicitud para considerarla compleja; también la detectan varias acciones o listas",
+      "type": "number",
+      "default": 240
+    },
+    "planMode": {
+      "title": "Modo del plan",
+      "description": "block: bloquea Edit/Write hasta que haya plan; warn: solo avisa en el panel; off: no vigila",
+      "type": "string",
+      "options": [
+        "block",
+        "warn",
+        "off"
+      ],
+      "default": "block"
+    },
+    "extraChecks": {
+      "title": "Verificaciones extra",
+      "description": "Comandos que cuentan como verificación, separados por coma (basta con un fragmento, p. ej. 'composer test, artisan test')",
+      "type": "string",
+      "default": ""
+    },
+    "language": {
+      "title": "Idioma / Language",
+      "description": "auto: sigue el idioma del sistema (es o en); también es o en",
+      "type": "string",
+      "options": [
+        "auto",
+        "es",
+        "en"
+      ],
+      "default": "auto"
+    }
+  }
+}

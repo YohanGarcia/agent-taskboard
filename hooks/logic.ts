@@ -1,0 +1,213 @@
+import type { Board, Check, HistoryEntry, Task, TaskStatus } from '../types'
+
+export const EMPTY_BOARD: Board = {
+  goal: '',
+  createdAt: null,
+  tasks: [],
+  activeId: null,
+  looseAgents: [],
+  needsPlan: false,
+  isArchived: false,
+  isResumed: false,
+}
+
+const CHECK_PATTERNS: [Check['kind'], RegExp][] = [
+  ['test', /\b(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?test\b|\b(?:vitest|jest|pytest|mocha|playwright|cypress|phpunit)\b|\bgo\s+test\b|\bcargo\s+test\b|\bdotnet\s+test\b|\bclaude\s+plugin\s+test\b|\bmake\s+test\b/i],
+  ['validate', /\bclaude\s+plugin\s+validate\b|\b(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:check|validate|verify)\b/i],
+  ['typecheck', /\btsc\b|\bmypy\b|\bpyright\b|\bcargo\s+check\b/i],
+  ['lint', /\beslint\b|\bruff\b|\bflake8\b|\bclippy\b|\b(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?lint\b/i],
+  ['build', /\b(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?build\b|\bvite\s+build\b|\bcargo\s+build\b|\bgo\s+build\b|\bgradle\b|\bmvn\b/i],
+]
+
+/**
+ * What kind of verification a shell command is, or null when it is not one.
+ * `extra` are the person's own commands (substrings, any case) that also count.
+ */
+export function checkKindOf(command: string, extra: readonly string[] = []): Check['kind'] | null {
+  for (const [kind, pattern] of CHECK_PATTERNS) {
+    if (pattern.test(command)) return kind
+  }
+
+  const lower = command.toLowerCase()
+  if (extra.some(part => part !== '' && lower.includes(part.toLowerCase()))) return 'custom'
+
+  return null
+}
+
+/**
+ * The task a subagent was started for, when its description or prompt names one:
+ * `t3: revisar tipos`, `[t3] revisar tipos`, `(t3) …`.
+ */
+export function taskIdFrom(...texts: readonly string[]): string | null {
+  for (const text of texts) {
+    const head = text.slice(0, 120)
+    const lead = /^\s*[[(]?\b(t\d{1,2})\b[\])]?\s*[:·–-]/i.exec(head)
+    const tagged = /[[(]\s*(t\d{1,2})\s*[\])]/i.exec(head)
+    const id = lead?.[1] ?? tagged?.[1]
+    if (id) return id.toLowerCase()
+  }
+
+  return null
+}
+
+const ACTION_WORDS =
+  /\b(?:implement\w*|cre(?:a|ar|e|es|en)|agreg\w*|a[ñn]ad\w*|refactor\w*|migr\w*|integr\w*|constru\w*|desarroll\w*|build\w*|add|create\w*|develop\w*)\b/gi
+
+/** Whether a prompt reads as a complex request that deserves a plan first. */
+export function looksComplex(text: string, minChars: number): boolean {
+  const t = text.trim()
+  if (t === '' || t.startsWith('/')) return false
+
+  const bullets = t.split(/\r?\n/).filter(l => /^\s*(?:[-*•]|\d+[.)])\s+/.test(l)).length
+  const actions = (t.match(ACTION_WORDS) ?? []).length
+
+  if (bullets >= 3) return true
+  if (actions >= 2) return true
+  if (t.endsWith('?') && t.length < minChars) return false
+
+  // Length alone is not a task: a pasted log or a long question names no action.
+  return actions >= 1 && t.length >= minChars
+}
+
+export function countsOf(tasks: readonly Task[]): Record<TaskStatus, number> {
+  const counts: Record<TaskStatus, number> = { pending: 0, in_progress: 0, done: 0, failed: 0, blocked: 0 }
+  for (const t of tasks) counts[t.status] += 1
+
+  return counts
+}
+
+/** A past plan brought back to the board: what was done stays done, the rest starts again. */
+export function boardFromEntry(
+  entry: HistoryEntry,
+  now: number,
+  noteOf: (status: TaskStatus) => string = () => '',
+): Board {
+  return {
+    ...EMPTY_BOARD,
+    goal: entry.goal,
+    createdAt: now,
+    isResumed: true,
+    tasks: entry.tasks.map((t, i) => ({
+      id: `t${i + 1}`,
+      title: t.title,
+      status: t.status === 'done' ? ('done' as const) : ('pending' as const),
+      startedAt: null,
+      endedAt: null,
+      calls: 0,
+      agents: [],
+      checks: [],
+      note: t.status === 'done' || t.status === 'pending' ? '' : noteOf(t.status),
+    })),
+  }
+}
+
+export function progressOf(tasks: readonly Task[]): { done: number; total: number; percent: number } {
+  const total = tasks.length
+  const done = tasks.filter(t => t.status === 'done').length
+
+  return { done, total, percent: total === 0 ? 0 : Math.round((done / total) * 100) }
+}
+
+export function isFinished(board: Board): boolean {
+  return board.tasks.length > 0 && board.tasks.every(t => t.status === 'done' || t.status === 'failed')
+}
+
+/** A task's elapsed time: running ones count to `now`, finished ones to their end. */
+export function elapsedOf(task: Task, now: number): number | null {
+  if (task.startedAt === null) return null
+
+  return Math.max(0, (task.endedAt ?? now) - task.startedAt)
+}
+
+/** `45s`, `3m05s`, `1h02m`. */
+export function durationOf(ms: number): string {
+  const s = Math.floor(ms / 1000)
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m${String(s % 60).padStart(2, '0')}s`
+
+  return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}m`
+}
+
+export function gauge(done: number, total: number, width: number): { on: string; off: string } {
+  const full = total === 0 ? 0 : Math.round((done / total) * width)
+
+  return { on: '▰'.repeat(full), off: '▱'.repeat(Math.max(0, width - full)) }
+}
+
+export function clip(text: string, max: number): string {
+  const one = text.replace(/\s+/g, ' ').trim()
+
+  return one.length > max ? `${one.slice(0, Math.max(0, max - 1)).trimEnd()}…` : one
+}
+
+export const GLYPH: Record<TaskStatus, string> = {
+  pending: '○',
+  in_progress: '◐',
+  done: '✓',
+  failed: '✗',
+  blocked: '⏸',
+}
+
+export const STATUSES: readonly TaskStatus[] = ['pending', 'in_progress', 'done', 'failed', 'blocked']
+
+/** Tasks from the model's plan input: strings or `{ title }` objects, ids t1, t2, … */
+export function tasksFrom(input: unknown): Task[] {
+  if (!Array.isArray(input)) return []
+
+  return input
+    .map(item =>
+      typeof item === 'string' ? item : typeof item === 'object' && item !== null ? String((item as { title?: unknown }).title ?? '') : '',
+    )
+    .map(title => clip(title, 120))
+    .filter(title => title !== '')
+    .slice(0, 30)
+    .map((title, i) => ({
+      id: `t${i + 1}`,
+      title,
+      status: 'pending' as const,
+      startedAt: null,
+      endedAt: null,
+      calls: 0,
+      agents: [],
+      checks: [],
+      note: '',
+    }))
+}
+
+/** Replaces one task, leaving the others. */
+export function withTask(board: Board, id: string, fn: (task: Task) => Task): Board {
+  return { ...board, tasks: board.tasks.map(t => (t.id === id ? fn(t) : t)) }
+}
+
+/** The check that decides whether a task may be called done: its latest one, if any. */
+export function lastCheck(task: Task): Check | null {
+  return task.checks.length === 0 ? null : (task.checks[task.checks.length - 1] ?? null)
+}
+
+export function historyEntryOf(board: Board, now: number, reason: HistoryEntry['reason']): HistoryEntry | null {
+  if (board.tasks.length === 0 || board.createdAt === null) return null
+  const { done, total } = progressOf(board.tasks)
+  const lastEnd = board.tasks.reduce((m, t) => Math.max(m, t.endedAt ?? 0), 0)
+  const endedAt = reason === 'completed' && lastEnd > 0 ? lastEnd : now
+
+  return {
+    goal: clip(board.goal, 160),
+    startedAt: board.createdAt,
+    endedAt,
+    durationMs: Math.max(0, endedAt - board.createdAt),
+    total,
+    done,
+    failed: board.tasks.filter(t => t.status === 'failed').length,
+    reason,
+    tasks: board.tasks.map(t => ({ title: clip(t.title, 100), status: t.status })),
+  }
+}
+
+/** `2026-10-10 20:31`, local time. */
+export function stampOf(ms: number): string {
+  const d = new Date(ms)
+  const p = (n: number) => String(n).padStart(2, '0')
+
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
