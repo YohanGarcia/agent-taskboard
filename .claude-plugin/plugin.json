@@ -1,6 +1,6 @@
 {
   "name": "agent-taskboard",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "A live task board for Claude Code: plans before building and shows every task, its status, time, subagents and checks in a side panel. Progress survives sessions.",
   "author": {
     "name": "Yohan Garcia",

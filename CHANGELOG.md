@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-10-11
+
+### Added
+- Delete from the history: `/taskboard history drop <n>`, `/taskboard history clear` and an `x` action in the
+  detail of an entry. The history list is numbered, 1 being the most recent.
+
 ## [0.5.0] - 2026-10-11
 
 ### Added

@@ -43,7 +43,9 @@ Built and tested on Claude Code **2.1.296**. The Mods API is early access and ma
 | Command | Does |
 | --- | --- |
 | `/taskboard` | Open the panel |
-| `/taskboard history` | Show the history (also in the panel) |
+| `/taskboard history` | Show the history, numbered from the most recent (also in the panel) |
+| `/taskboard history drop <n>` | Delete entry `n` from the history |
+| `/taskboard history clear` | Empty the history |
 | `/taskboard stats` | Tokens and cost per task, plus the mod's own per-request overhead (an estimate) |
 | `/taskboard clear` | Archive the plan and empty the board |
 | `/taskboard skip` | Do not require a plan for the current request |
@@ -51,7 +53,7 @@ Built and tested on Claude Code **2.1.296**. The Mods API is early access and ma
 
 ### Panel keys
 
-`1-9` open a task · `i` start · `d` done · `b` block · `f` failed · `e` expand all · `h` history · `l` clear · `o` skip plan · `r` resume a past plan (in history).
+`1-9` open a task · `i` start · `d` done · `b` block · `f` failed · `e` expand all · `h` history · `l` clear · `o` skip plan · `r` resume a past plan and `x` delete it (in history).
 
 ### How Claude talks to it
 
@@ -112,6 +114,7 @@ Layout: `hooks/register.tsx` (the hooks and the panel), `hooks/logic.ts` (pure f
 ```
 
 - **Plan nativo y lista de tareas:** el plan que apruebas en modo plan y la lista `TodoWrite` de Claude Code aparecen solos en el tablero, con sus estados.
+- **Limpiar el historial:** `/taskboard history drop <n>` borra una entrada (1 es la más reciente), `/taskboard history clear` lo vacía, y en el detalle de una entrada la tecla `x` la borra.
 - **Tiempo de trabajo:** la duración de un plan suma solo los tramos en que hubo trabajo; las horas con el plan abierto entre sesiones no cuentan.
 - **Estados desde eventos reales:** una verificación que falla (tests, build, lint, tsc) impide marcar la tarea como hecha.
 - **Idioma:** `language: auto` sigue el idioma del sistema; también `es` o `en`.

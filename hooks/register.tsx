@@ -18,6 +18,7 @@ import {
   clip,
   commandLabel,
   countsOf,
+  dropEntry,
   durationOf,
   elapsedOf,
   emptyUsage,
@@ -337,6 +338,27 @@ async function reopenEntry($: EngineInterface, entry: HistoryEntry, t: Messages)
   await mutate($, () => boardFromEntry(entry, now, status => t.previously(t.status[status])))
 }
 
+/** Deletes one history entry by its number (1 = most recent); null when there is none. */
+async function removeEntry($: EngineInterface, number: number): Promise<HistoryEntry | null> {
+  const found = dropEntry(await read($, historyAtom), number)
+  if (!found) return null
+
+  await update($, historyAtom, () => found.rest)
+  await update($, viewAtom, x => (x.historyOpen === found.dropped.startedAt ? { ...x, historyOpen: null } : x))
+  await persist($)
+
+  return found.dropped
+}
+
+async function wipeHistory($: EngineInterface): Promise<number> {
+  const count = (await read($, historyAtom)).length
+  await update($, historyAtom, () => [])
+  await update($, viewAtom, x => ({ ...x, historyOpen: null }))
+  await persist($)
+
+  return count
+}
+
 // ---------------------------------------------------------------- text answers
 
 function historyText(entries: readonly HistoryEntry[], t: Messages): string {
@@ -344,9 +366,9 @@ function historyText(entries: readonly HistoryEntry[], t: Messages): string {
   const lines = entries
     .slice(-15)
     .reverse()
-    .map(entry => {
+    .map((entry, i) => {
       const mark = entry.reason === 'completed' ? '✓' : entry.reason === 'replaced' ? '↻' : '✗'
-      return `${mark} ${stampOf(entry.startedAt)} · ${entry.done}/${entry.total} · ${durationOf(entry.durationMs)} · ${entry.goal}`
+      return `${i + 1}. ${mark} ${stampOf(entry.startedAt)} · ${entry.done}/${entry.total} · ${durationOf(entry.durationMs)} · ${entry.goal}`
     })
 
   return [t.historyHeading, ...lines].join('\n')
@@ -404,7 +426,7 @@ export const register: Register = (on, options) => {
     await $.command.register({
       name: 'taskboard',
       description: t.commandDescription,
-      argumentHint: '[open|close|history|clear|skip|stats]',
+      argumentHint: '[open|close|history [drop <n>|clear]|clear|skip|stats]',
     })
     await $.tool.register({
       name: 'plan',
@@ -579,6 +601,17 @@ export const register: Register = (on, options) => {
       return { text: t.closed }
     }
     if (verb === 'history') {
+      const [, sub = '', arg = ''] = e.args.trim().split(/\s+/)
+      if (sub === 'clear') return { text: t.historyWiped(await wipeHistory($)) }
+      if (sub === 'drop') {
+        const number = Number(arg)
+        const dropped = await removeEntry($, number)
+        if (dropped) return { text: t.historyDropped(number, clip(dropped.goal, 80)) }
+
+        return { text: t.historyNoEntry(number, (await read($, historyAtom)).length) }
+      }
+      if (sub !== '') return { text: t.historyUsage }
+
       await update($, viewAtom, x => ({ ...x, mode: 'history' as const }))
       void $.ui.open({ id: PANE, title: t.paneTitle, columns: 52 }).catch(() => undefined)
       return { text: historyText(await read($, historyAtom), t) }
@@ -708,6 +741,13 @@ export const register: Register = (on, options) => {
                       ))}
                       <Box columnGap={2}>
                         <Button key={`reopen-${entry.startedAt}`} plain hotkey="r" label={t.reopen} onPress={() => reopenEntry($, entry, t)} />
+                        <Button
+                          key={`drop-${entry.startedAt}`}
+                          plain
+                          hotkey="x"
+                          label={t.dropEntry}
+                          onPress={() => removeEntry($, past.length - past.indexOf(entry))}
+                        />
                       </Box>
                     </Box>
                   ) : null}

@@ -58,6 +58,11 @@ export type Messages = {
   clear: string
   reopen: string
   historyHelp: string
+  dropEntry: string
+  historyDropped: (number: number, goal: string) => string
+  historyNoEntry: (number: number, count: number) => string
+  historyWiped: (count: number) => string
+  historyUsage: string
   noticeTitle: string
   noticeBlocking: string
   noticeSuggesting: string
@@ -151,7 +156,13 @@ const es: Messages = {
   viewHistory: 'historial',
   clear: 'limpiar',
   reopen: '↻ retomar este plan',
-  historyHelp: '1-9 abre · r retoma · h vuelve al tablero',
+  historyHelp: '1-9 abre · r retoma · x borra · h vuelve al tablero',
+  dropEntry: '✗ borrar del historial',
+  historyDropped: (number, goal) => `Entrada ${number} borrada del historial: ${goal}`,
+  historyNoEntry: (number, count) =>
+    count === 0 ? 'El historial está vacío.' : `No hay una entrada ${number}; el historial tiene ${count}.`,
+  historyWiped: count => `Historial vaciado (${count} plan(es) borrados).`,
+  historyUsage: 'Uso: /taskboard history [drop <n> | clear]',
   noticeTitle: 'Solicitud compleja detectada',
   noticeBlocking: 'Edit/Write quedan bloqueados hasta que Claude registre un plan.',
   noticeSuggesting: 'Conviene que Claude registre un plan antes de editar.',
@@ -247,7 +258,13 @@ const en: Messages = {
   viewHistory: 'history',
   clear: 'clear',
   reopen: '↻ resume this plan',
-  historyHelp: '1-9 open · r resume · h back to the board',
+  historyHelp: '1-9 open · r resume · x delete · h back to the board',
+  dropEntry: '✗ delete from history',
+  historyDropped: (number, goal) => `Entry ${number} deleted from the history: ${goal}`,
+  historyNoEntry: (number, count) =>
+    count === 0 ? 'The history is empty.' : `There is no entry ${number}; the history has ${count}.`,
+  historyWiped: count => `History emptied (${count} plan(s) deleted).`,
+  historyUsage: 'Usage: /taskboard history [drop <n> | clear]',
   noticeTitle: 'Complex request detected',
   noticeBlocking: 'Edit/Write are blocked until Claude registers a plan.',
   noticeSuggesting: 'Claude should register a plan before editing.',

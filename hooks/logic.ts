@@ -391,6 +391,20 @@ export function historyEntryOf(board: Board, now: number, reason: HistoryEntry['
   }
 }
 
+/**
+ * The history without one entry. `number` counts as the list shows it: 1 is the most recent.
+ * Returns the entry that left, or null when there is no such number.
+ */
+export function dropEntry(
+  entries: readonly HistoryEntry[],
+  number: number,
+): { rest: HistoryEntry[]; dropped: HistoryEntry } | null {
+  if (!Number.isInteger(number) || number < 1 || number > entries.length) return null
+  const index = entries.length - number
+
+  return { rest: entries.filter((_, i) => i !== index), dropped: entries[index] as HistoryEntry }
+}
+
 /** `2026-10-10 20:31`, local time. */
 export function stampOf(ms: number): string {
   const d = new Date(ms)
