@@ -15,6 +15,7 @@ export type Messages = {
   noteDescription: string
   emptyPlan: string
   untitled: string
+  todoGoal: string
   planRegistered: (count: number, list: string) => string
   noSuchTask: (id: string, ids: string) => string
   badStatus: (status: string) => string
@@ -94,6 +95,7 @@ const es: Messages = {
     'Ante una solicitud compleja (varios archivos, varias etapas, una funcionalidad nueva o un refactor), ANTES de editar o escribir archivos llama a mcp__agent-taskboard__plan con { goal, tasks }: tasks es una lista corta de pasos concretos y verificables.',
     'Mientras trabajas usa mcp__agent-taskboard__task con { id, status }: marca "in_progress" al empezar cada tarea y "done" al terminarla. Antes de "done" ejecuta la verificación que corresponda (tests, build, lint o tsc): el tablero rechaza "done" si la última verificación de esa tarea falló.',
     'Si una tarea no se puede completar, márcala "failed" o "blocked" con una nota breve. Para solicitudes simples no crees plan.',
+    'El plan del modo plan (ExitPlanMode) y la lista TodoWrite se reflejan solos en el tablero: si usas uno de ellos no hace falta llamar a plan.',
     'Al lanzar un subagente para una tarea del plan, empieza su description con el id, por ejemplo "t2: revisar tipos", para que el tablero lo asigne a esa tarea.',
   ].join('\n'),
   denyNoPlan:
@@ -108,6 +110,7 @@ const es: Messages = {
   noteDescription: 'Nota breve opcional',
   emptyPlan: 'Plan vacío: indica al menos una tarea en "tasks".',
   untitled: 'Sin título',
+  todoGoal: 'Tareas de Claude Code',
   planRegistered: (count, list) =>
     `Plan registrado (${count} tareas): ${list}. Actualiza cada una con mcp__agent-taskboard__task.`,
   noSuchTask: (id, ids) => `No existe la tarea "${id}". Tareas del plan: ${ids || 'ninguna'}.`,
@@ -188,6 +191,7 @@ const en: Messages = {
     'For a complex request (several files, several stages, a new feature or a refactor), BEFORE editing or writing files call mcp__agent-taskboard__plan with { goal, tasks }: tasks is a short list of concrete, verifiable steps.',
     'While you work use mcp__agent-taskboard__task with { id, status }: mark "in_progress" when you start each task and "done" when you finish it. Before "done" run the check that fits (tests, build, lint or tsc): the board rejects "done" if that task\'s last check failed.',
     'If a task cannot be completed, mark it "failed" or "blocked" with a short note. For simple requests do not create a plan.',
+    'The plan from plan mode (ExitPlanMode) and the TodoWrite list are mirrored on the board by themselves: if you use one of them there is no need to call plan.',
     'When you start a subagent for a plan task, begin its description with the id, for example "t2: review types", so the board assigns it to that task.',
   ].join('\n'),
   denyNoPlan:
@@ -202,6 +206,7 @@ const en: Messages = {
   noteDescription: 'Optional short note',
   emptyPlan: 'Empty plan: give at least one task in "tasks".',
   untitled: 'Untitled',
+  todoGoal: 'Claude Code tasks',
   planRegistered: (count, list) =>
     `Plan registered (${count} tasks): ${list}. Update each one with mcp__agent-taskboard__task.`,
   noSuchTask: (id, ids) => `There is no task "${id}". Plan tasks: ${ids || 'none'}.`,

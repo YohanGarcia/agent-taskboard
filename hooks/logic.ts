@@ -39,6 +39,20 @@ export function checkKindOf(command: string, extra: readonly string[] = []): Che
   return null
 }
 
+const CD_PREFIX = /^\s*(?:cd|pushd|set-location)\s+(?:"[^"]*"|'[^']*'|[^\s;&|]+)\s*(?:&&|;)\s*/i
+
+/** A command as the board shows it: without the `cd <folder> &&` that only says where it ran. */
+export function commandLabel(command: string): string {
+  let text = command
+  for (let i = 0; i < 3; i += 1) {
+    const next = text.replace(CD_PREFIX, '')
+    if (next === text || next.trim() === '') break
+    text = next
+  }
+
+  return text.trim()
+}
+
 /**
  * The task a subagent was started for, when its description or prompt names one:
  * `t3: revisar tipos`, `[t3] revisar tipos`, `(t3) …`.
@@ -128,6 +142,26 @@ export function elapsedOf(task: Task, now: number): number | null {
   return Math.max(0, (task.endedAt ?? now) - task.startedAt)
 }
 
+/**
+ * Time actually spent on a plan: the union of its tasks' running stretches (to `now` for running ones).
+ * A plan left open overnight does not count the hours nobody worked on it.
+ */
+export function workTimeOf(tasks: readonly Task[], now: number): number {
+  const spans = tasks
+    .filter(t => t.startedAt !== null)
+    .map(t => [t.startedAt as number, Math.max(t.startedAt as number, t.endedAt ?? now)] as const)
+    .sort((a, b) => a[0] - b[0])
+
+  let total = 0
+  let end = -Infinity
+  for (const [from, to] of spans) {
+    total += Math.max(0, to - Math.max(from, end))
+    end = Math.max(end, to)
+  }
+
+  return total
+}
+
 /** `45s`, `3m05s`, `1h02m`. */
 export function durationOf(ms: number): string {
   const s = Math.floor(ms / 1000)
@@ -188,6 +222,144 @@ export function tasksFrom(input: unknown): Task[] {
     }))
 }
 
+/** A task as Claude Code's own plan mode or todo list names it. */
+export type NativeItem = { title: string; status: TaskStatus }
+
+function blankTask(id: string, title: string, status: TaskStatus = 'pending'): Task {
+  return {
+    id,
+    title,
+    status,
+    startedAt: null,
+    endedAt: null,
+    calls: 0,
+    agents: [],
+    checks: [],
+    note: '',
+    usage: emptyUsage(),
+    agentUsage: emptyUsage(),
+    cost: 0,
+    costMark: null,
+  }
+}
+
+const NATIVE_STATUS: Record<string, TaskStatus> = {
+  pending: 'pending',
+  in_progress: 'in_progress',
+  completed: 'done',
+  done: 'done',
+}
+
+/** The items of a `TodoWrite` input (`{ todos: [{ content, status, activeForm }] }`). */
+export function itemsFromTodos(input: unknown): NativeItem[] {
+  if (!Array.isArray(input)) return []
+
+  const items: NativeItem[] = []
+  for (const raw of input) {
+    if (typeof raw !== 'object' || raw === null) continue
+    const r = raw as { content?: unknown; subject?: unknown; activeForm?: unknown; status?: unknown }
+    const title = clip(String(r.content ?? r.subject ?? r.activeForm ?? ''), 120)
+    if (title === '') continue
+    items.push({ title, status: NATIVE_STATUS[String(r.status ?? '')] ?? 'pending' })
+  }
+
+  return items.slice(0, 30)
+}
+
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/^\[[ xX]\]\s+/, '')
+    .replace(/[*_`]+/g, '')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .trim()
+}
+
+/**
+ * The goal and the steps of a plan-mode plan (markdown): the first heading is the goal;
+ * the steps are its numbered items, or its bullets when nothing is numbered, or its
+ * sub-headings as a last resort. Nested items are details, not steps.
+ */
+export function planFromMarkdown(text: string): { goal: string; steps: string[] } {
+  const lines = text.split(/\r?\n/)
+  const heading = lines.map(l => /^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/.exec(l)?.[1]).find(h => h !== undefined)
+  const firstText = lines.map(l => l.trim()).find(l => l !== '' && !/^(?:#|[-*•]|\d+[.)])/.test(l))
+  const goal = clip(stripMarkdown(heading ?? firstText ?? ''), 160)
+
+  const top = (re: RegExp) =>
+    lines
+      .map(l => (/^ {0,1}\S/.test(l) ? re.exec(l)?.[1] : undefined))
+      .filter((s): s is string => s !== undefined)
+      .map(s => clip(stripMarkdown(s), 120))
+      .filter(s => s !== '')
+  const numbered = top(/^\s*\d+[.)]\s+(.+)$/)
+  const bullets = top(/^\s*[-*•]\s+(.+)$/)
+  const subs = lines
+    .map(l => /^\s{0,3}#{2,6}\s+(.+?)\s*#*\s*$/.exec(l)?.[1])
+    .filter((s): s is string => s !== undefined)
+    .map(s => clip(stripMarkdown(s), 120))
+
+  const steps = numbered.length > 0 ? numbered : bullets.length > 0 ? bullets : subs
+
+  return { goal, steps: steps.slice(0, 30) }
+}
+
+const sameTitle = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
+
+/** Whether the board already holds at least one of these items (by title). */
+export function sharesTask(board: Board, items: readonly NativeItem[]): boolean {
+  return items.some(i => board.tasks.some(t => sameTitle(t.title, i.title)))
+}
+
+/**
+ * The board after Claude Code's own list changed. Tasks already on the board (by title)
+ * keep their time, tokens, checks and agents; the list's statuses are the truth.
+ * `fresh` starts a new board instead of editing the current one.
+ */
+export function boardFromNative(
+  board: Board,
+  items: readonly NativeItem[],
+  opts: { goal: string; source: NonNullable<Board['source']>; now: number; cost: number | null; fresh: boolean },
+): Board {
+  const base: Board = opts.fresh ? { ...EMPTY_BOARD, createdAt: opts.now } : board
+  const taken = new Set<string>()
+
+  const tasks = items.map((item, i) => {
+    const old = base.tasks.find(t => !taken.has(t.id) && sameTitle(t.title, item.title))
+    if (old) taken.add(old.id)
+    const was = old ?? blankTask('', item.title)
+    const settled = was.status === 'in_progress' && item.status !== 'in_progress' ? settleCost(was, opts.cost) : was
+    const id = `t${i + 1}`
+
+    if (item.status === 'in_progress') {
+      const resumed = was.status === 'in_progress' ? settled : markCost(settled, opts.cost)
+      return { ...resumed, id, title: item.title, status: item.status, startedAt: was.startedAt ?? opts.now, endedAt: null }
+    }
+    if (item.status === 'pending') {
+      return { ...settled, id, title: item.title, status: item.status, startedAt: null, endedAt: null }
+    }
+
+    return {
+      ...settled,
+      id,
+      title: item.title,
+      status: item.status,
+      startedAt: was.startedAt ?? opts.now,
+      endedAt: was.endedAt ?? opts.now,
+    }
+  })
+
+  return {
+    ...base,
+    goal: base.goal !== '' && !opts.fresh ? base.goal : opts.goal,
+    createdAt: base.createdAt ?? opts.now,
+    tasks,
+    activeId: tasks.find(t => t.status === 'in_progress')?.id ?? null,
+    needsPlan: false,
+    isArchived: false,
+    source: opts.source,
+  }
+}
+
 /** Replaces one task, leaving the others. */
 export function withTask(board: Board, id: string, fn: (task: Task) => Task): Board {
   return { ...board, tasks: board.tasks.map(t => (t.id === id ? fn(t) : t)) }
@@ -208,7 +380,7 @@ export function historyEntryOf(board: Board, now: number, reason: HistoryEntry['
     goal: clip(board.goal, 160),
     startedAt: board.createdAt,
     endedAt,
-    durationMs: Math.max(0, endedAt - board.createdAt),
+    durationMs: workTimeOf(board.tasks, endedAt),
     total,
     done,
     failed: board.tasks.filter(t => t.status === 'failed').length,
@@ -244,6 +416,11 @@ export function gitDirFromFile(text: string): string | null {
   const match = /^gitdir:\s*(.+)$/m.exec(text.trim())
 
   return match?.[1]?.trim() ?? null
+}
+
+/** A file Claude Code itself keeps its plans in (`.claude/plans/…`): writing it is planning, not building. */
+export function isPlanFile(path: unknown): boolean {
+  return typeof path === 'string' && /(?:^|[\\/])\.claude[\\/]plans[\\/]/.test(path)
 }
 
 /** Keeps the end of a long path: `…\money\Money-Fast-Web`. */

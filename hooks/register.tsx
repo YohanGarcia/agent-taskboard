@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { AgentRun, Board, HistoryEntry, Project, TaskStatus, View } from '../types'
+import type { NativeItem } from './logic'
 import { messages, resolveLang, systemLocale } from './i18n'
 import type { Messages } from './i18n'
 import {
@@ -11,9 +12,11 @@ import {
   addUsage,
   billableOf,
   boardFromEntry,
+  boardFromNative,
   branchFromHead,
   checkKindOf,
   clip,
+  commandLabel,
   countsOf,
   durationOf,
   elapsedOf,
@@ -25,25 +28,32 @@ import {
   gitDirFromFile,
   historyEntryOf,
   isFinished,
+  isPlanFile,
+  itemsFromTodos,
   lastCheck,
   looksComplex,
   markCost,
   normalizeTask,
   parentOf,
+  planFromMarkdown,
   progressOf,
   settleCost,
+  sharesTask,
   stampOf,
   sumUsage,
   tailClip,
   taskIdFrom,
   tasksFrom,
   withTask,
+  workTimeOf,
 } from './logic'
 
 const PANE = 'agent-taskboard'
 const PLAN_TOOL = 'mcp__agent-taskboard__plan'
 const TASK_TOOL = 'mcp__agent-taskboard__task'
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'NotebookEdit'])
+const PLAN_MODE_TOOL = 'ExitPlanMode'
+const TODO_TOOL = 'TodoWrite'
 const HISTORY_LIMIT = 100
 
 const boardAtom = atom({ plugin: 'agent-taskboard', key: 'board' } as const, EMPTY_BOARD)
@@ -176,7 +186,8 @@ async function afterCall(
   if (b.tasks.length === 0) return
 
   const now = await $.clock.now()
-  const willStart = b.activeId === null && b.tasks.some(x => x.status === 'pending')
+  const isAuto = b.source !== 'todo'
+  const willStart = isAuto && b.activeId === null && b.tasks.some(x => x.status === 'pending')
   const cost = willStart ? await costNow($) : null
   const command = typeof input.command === 'string' ? input.command : ''
   const kind = tool === 'Bash' || tool === 'PowerShell' ? checkKindOf(command, extraChecks) : null
@@ -186,7 +197,7 @@ async function afterCall(
     let activeId = cur.activeId
 
     // The first real call after a plan starts its first pending task.
-    if (activeId === null) {
+    if (activeId === null && isAuto) {
       const first = cur.tasks.find(task => task.status === 'pending')
       if (!first) return cur
       activeId = first.id
@@ -198,12 +209,49 @@ async function afterCall(
       }))
     }
 
+    if (activeId === null) return cur
+
     return withTask(next, activeId, task => ({
       ...task,
       calls: task.calls + 1,
-      checks: kind ? [...task.checks, { kind, command: clip(command, 80), ok: isOk, at: now }].slice(-10) : task.checks,
+      checks: kind ? [...task.checks, { kind, command: clip(commandLabel(command), 80), ok: isOk, at: now }].slice(-10) : task.checks,
     }))
   })
+}
+
+/**
+ * Claude Code's own plan (ExitPlanMode) or todo list (TodoWrite) becomes the board.
+ * A list that shares no task with the current plan replaces it; the same list updates it.
+ */
+async function ingestNative(
+  $: EngineInterface,
+  source: NonNullable<Board['source']>,
+  goal: string,
+  items: readonly NativeItem[],
+  untitled: string,
+): Promise<void> {
+  const b = await read($, boardAtom)
+  if (items.length === 0) {
+    if (b.needsPlan) await skipPlan($)
+    return
+  }
+
+  const shares = sharesTask(b, items)
+  const isFinal = items.every(i => i.status === 'done')
+  // The same finished list sent again must not open a second history entry.
+  if (b.isArchived && shares && isFinal) return
+
+  const fresh = b.tasks.length === 0 || b.isArchived || !shares
+  if (fresh && b.tasks.length > 0) await archiveBoard($, 'replaced')
+  if (fresh) await update($, viewAtom, () => FRESH_VIEW)
+
+  const now = await $.clock.now()
+  const cost = await costNow($)
+  await mutate($, cur =>
+    boardFromNative(fresh ? EMPTY_BOARD : cur, items, { goal: goal || untitled, source, now, cost, fresh }),
+  )
+
+  if (isFinished(await read($, boardAtom))) await archiveBoard($, 'completed')
 }
 
 async function setTaskStatus($: EngineInterface, id: string, status: TaskStatus, note: string): Promise<void> {
@@ -458,7 +506,9 @@ export const register: Register = (on, options) => {
     const tool = String(e.tool)
     if (tool === PLAN_TOOL || tool === TASK_TOOL) return next(e)
 
-    if (isEnforcing && !e.agentId && EDIT_TOOLS.has(tool)) {
+    // The plan file is where plan mode writes the plan; blocking it would stop ExitPlanMode from ever running.
+    const target = (e as unknown as Record<string, unknown>).file_path
+    if (isEnforcing && !e.agentId && EDIT_TOOLS.has(tool) && !isPlanFile(target)) {
       const b = await read($, boardAtom)
       if (b.needsPlan) return { deny: t.denyNoPlan }
     }
@@ -468,6 +518,14 @@ export const register: Register = (on, options) => {
     if (!e.agentId) {
       const isOk = ran.deny === undefined && ran.isError !== true
       await afterCall($, tool, e as unknown as Record<string, unknown>, isOk, extraChecks)
+      const input = e as unknown as Record<string, unknown>
+      if (isOk && tool === PLAN_MODE_TOOL) {
+        const plan = planFromMarkdown(String(input.plan ?? ''))
+        const items = plan.steps.map(title => ({ title, status: 'pending' as const }))
+        await ingestNative($, 'plan-mode', plan.goal, items, t.untitled).catch(() => undefined)
+      } else if (isOk && tool === TODO_TOOL) {
+        await ingestNative($, 'todo', '', itemsFromTodos(input.todos), t.todoGoal).catch(() => undefined)
+      }
       // A shell command may have switched branch.
       if (tool === 'Bash' || tool === 'PowerShell') await refreshProject($).catch(() => undefined)
     }
@@ -694,7 +752,7 @@ export const register: Register = (on, options) => {
     }
 
     // ---- the board: summary, then one row per task, cards for the ones in focus
-    const elapsed = b.createdAt === null ? '' : ` · ${durationOf(now - b.createdAt)}`
+    const elapsed = b.createdAt === null ? '' : ` · ${durationOf(workTimeOf(b.tasks, now))}`
     const planTokens =
       b.tasks.reduce((n, x) => n + billableOf(x.usage) + billableOf(x.agentUsage), 0) + billableOf(b.untracked)
     const planCost = b.tasks.reduce((n, x) => n + x.cost, 0)

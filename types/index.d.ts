@@ -63,6 +63,8 @@ export type Board = {
   isArchived: boolean
   /** The board came back from a previous session. */
   isResumed: boolean
+  /** Where the plan came from: the mod's own tool, Claude Code's plan mode or its todo list. */
+  source?: 'taskboard' | 'plan-mode' | 'todo'
 }
 
 export type HistoryEntry = {
