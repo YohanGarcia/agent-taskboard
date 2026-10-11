@@ -77,6 +77,15 @@ export type Messages = {
   rootLabel: string
   branchLabel: string
   noBranch: string
+  // tokens and cost
+  tokensLine: (input: string, output: string, cache: string, agents: string, cost: string) => string
+  totalLine: (tokens: string, cost: string) => string
+  statsTitle: (goal: string) => string
+  statsNoPlan: string
+  statsRow: (id: string, title: string, tokens: string, detail: string, cost: string) => string
+  statsUntracked: (tokens: string) => string
+  statsTotal: (tokens: string, cost: string) => string
+  statsOverhead: (rules: string, tools: string, total: string) => string
 }
 
 const es: Messages = {
@@ -161,6 +170,16 @@ const es: Messages = {
   rootLabel: 'raíz',
   branchLabel: 'rama',
   noBranch: 'sin git',
+  tokensLine: (input, output, cache, agents, cost) =>
+    `↑${input} ↓${output} · caché ${cache}${agents ? ` · subagentes ${agents}` : ''}${cost ? ` · ${cost}` : ''}`,
+  totalLine: (tokens, cost) => `Σ ${tokens} tokens${cost ? ` · ${cost}` : ''}`,
+  statsTitle: goal => `Tokens y costo del plan: ${goal}`,
+  statsNoPlan: 'No hay plan activo; nada que medir.',
+  statsRow: (id, title, tokens, detail, cost) => `${id} ${title} · ${tokens}${detail ? ` (${detail})` : ''}${cost ? ` · ${cost}` : ''}`,
+  statsUntracked: tokens => `sin tarea: ${tokens}`,
+  statsTotal: (tokens, cost) => `Total: ${tokens} tokens${cost ? ` · ${cost}` : ''}`,
+  statsOverhead: (rules, tools, total) =>
+    `Costo propio de agent-taskboard (estimación, texto fijo en cada petición): ~${total} tokens (reglas ${rules} + herramientas ${tools}). Casi todo se sirve desde la caché del prompt.`,
 }
 
 const en: Messages = {
@@ -244,6 +263,16 @@ const en: Messages = {
   rootLabel: 'root',
   branchLabel: 'branch',
   noBranch: 'no git',
+  tokensLine: (input, output, cache, agents, cost) =>
+    `↑${input} ↓${output} · cache ${cache}${agents ? ` · subagents ${agents}` : ''}${cost ? ` · ${cost}` : ''}`,
+  totalLine: (tokens, cost) => `Σ ${tokens} tokens${cost ? ` · ${cost}` : ''}`,
+  statsTitle: goal => `Tokens and cost of the plan: ${goal}`,
+  statsNoPlan: 'No active plan; nothing to measure.',
+  statsRow: (id, title, tokens, detail, cost) => `${id} ${title} · ${tokens}${detail ? ` (${detail})` : ''}${cost ? ` · ${cost}` : ''}`,
+  statsUntracked: tokens => `no task: ${tokens}`,
+  statsTotal: (tokens, cost) => `Total: ${tokens} tokens${cost ? ` · ${cost}` : ''}`,
+  statsOverhead: (rules, tools, total) =>
+    `agent-taskboard's own cost (estimate, fixed text on every request): ~${total} tokens (rules ${rules} + tools ${tools}). Most of it is served from the prompt cache.`,
 }
 
 const TABLE: Record<Lang, Messages> = { es, en }

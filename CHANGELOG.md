@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - Unreleased
+
+### Added
+- Tokens per task: the main agent's and its subagents', split into fresh input, output and cache.
+- Session cost per task and a plan total, also kept in the history.
+- `/taskboard stats`: the detail per task and an estimate of the mod's own per-request overhead.
+
+### Changed
+- Stored plans from older versions are brought up to the new shape when they are restored.
+
 ## [0.3.0] - 2026-10-10
 
 ### Added

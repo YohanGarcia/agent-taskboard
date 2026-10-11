@@ -8,6 +8,8 @@ import {
   EMPTY_BOARD,
   GLYPH,
   STATUSES,
+  addUsage,
+  billableOf,
   boardFromEntry,
   branchFromHead,
   checkKindOf,
@@ -15,15 +17,23 @@ import {
   countsOf,
   durationOf,
   elapsedOf,
+  emptyUsage,
+  estimateTokens,
+  fmtTokens,
+  fmtUsd,
   gauge,
   gitDirFromFile,
   historyEntryOf,
   isFinished,
   lastCheck,
   looksComplex,
+  markCost,
+  normalizeTask,
   parentOf,
   progressOf,
+  settleCost,
   stampOf,
+  sumUsage,
   tailClip,
   taskIdFrom,
   tasksFrom,
@@ -123,7 +133,8 @@ async function restore($: EngineInterface, t: Messages): Promise<void> {
     needsPlan: false,
     isResumed: true,
     looseAgents: [],
-    tasks: saved.tasks.map(task => ({
+    untracked: saved.untracked ?? emptyUsage(),
+    tasks: saved.tasks.map(normalizeTask).map(task => ({
       ...task,
       agents: task.agents.map(a => (a.status === 'running' ? { ...a, status: 'stopped' as const } : a)),
       ...(task.status === 'in_progress'
@@ -165,6 +176,8 @@ async function afterCall(
   if (b.tasks.length === 0) return
 
   const now = await $.clock.now()
+  const willStart = b.activeId === null && b.tasks.some(x => x.status === 'pending')
+  const cost = willStart ? await costNow($) : null
   const command = typeof input.command === 'string' ? input.command : ''
   const kind = tool === 'Bash' || tool === 'PowerShell' ? checkKindOf(command, extraChecks) : null
 
@@ -178,7 +191,7 @@ async function afterCall(
       if (!first) return cur
       activeId = first.id
       next = withTask({ ...cur, activeId }, first.id, task => ({
-        ...task,
+        ...markCost(task, cost),
         status: 'in_progress',
         startedAt: task.startedAt !== null && task.endedAt !== null ? now - (task.endedAt - task.startedAt) : now,
         endedAt: null,
@@ -195,6 +208,7 @@ async function afterCall(
 
 async function setTaskStatus($: EngineInterface, id: string, status: TaskStatus, note: string): Promise<void> {
   const now = await $.clock.now()
+  const cost = await costNow($)
 
   await mutate($, cur => {
     const paused = cur.tasks.find(task => task.status === 'in_progress' && task.id !== id)
@@ -202,23 +216,23 @@ async function setTaskStatus($: EngineInterface, id: string, status: TaskStatus,
 
     // One task at a time: starting another pauses the running one.
     if (status === 'in_progress' && paused) {
-      next = withTask(next, paused.id, task => ({ ...task, status: 'pending', endedAt: now }))
+      next = withTask(next, paused.id, task => ({ ...settleCost(task, cost), status: 'pending', endedAt: now }))
     }
 
     next = withTask(next, id, task => {
       if (status === 'in_progress') {
         const wasPaused = task.startedAt !== null && task.endedAt !== null
         return {
-          ...task,
+          ...markCost(task, cost),
           status,
           startedAt: wasPaused ? now - ((task.endedAt ?? now) - (task.startedAt ?? now)) : (task.startedAt ?? now),
           endedAt: null,
           note: note || task.note,
         }
       }
-      if (status === 'pending') return { ...task, status, startedAt: null, endedAt: null, note: note || task.note }
+      if (status === 'pending') return { ...settleCost(task, cost), status, startedAt: null, endedAt: null, note: note || task.note }
 
-      return { ...task, status, startedAt: task.startedAt ?? now, endedAt: now, note: note || task.note }
+      return { ...settleCost(task, cost), status, startedAt: task.startedAt ?? now, endedAt: now, note: note || task.note }
     })
 
     const activeId = status === 'in_progress' ? id : cur.activeId === id ? null : cur.activeId
@@ -227,6 +241,31 @@ async function setTaskStatus($: EngineInterface, id: string, status: TaskStatus,
   })
 
   if (isFinished(await read($, boardAtom))) await archiveBoard($, 'completed')
+}
+
+/** The session's cost so far, read fresh; null where the host keeps no ledger. */
+async function costNow($: EngineInterface): Promise<number | null> {
+  const usage = await $.session.usage().catch(() => null)
+
+  return usage?.cost?.usd ?? null
+}
+
+/** Adds one model request to the task it belongs to: the active one for the main agent, the owner for a subagent. */
+async function recordUsage($: EngineInterface, agentId: string | null, step: Parameters<typeof addUsage>[1]): Promise<void> {
+  if (!step) return
+
+  await mutate($, cur => {
+    if (agentId === null) {
+      if (cur.activeId === null) return { ...cur, untracked: addUsage(cur.untracked, step) }
+
+      return withTask(cur, cur.activeId, task => ({ ...task, usage: addUsage(task.usage, step) }))
+    }
+
+    const owner = cur.tasks.find(task => task.agents.some(a => a.id === agentId))?.id ?? cur.activeId
+    if (owner === null) return { ...cur, untracked: addUsage(cur.untracked, step) }
+
+    return withTask(cur, owner, task => ({ ...task, agentUsage: addUsage(task.agentUsage, step) }))
+  })
 }
 
 async function setAgentStatus($: EngineInterface, agentId: string, status: AgentRun['status']): Promise<void> {
@@ -273,6 +312,32 @@ function boardText(b: Board, t: Messages): string {
   return [`${b.goal} · ${done}/${total} (${percent}%)`, ...rows].join('\n')
 }
 
+/** Tokens and cost per task, plus what the mod itself adds to every request (an estimate). */
+function statsText(b: Board, t: Messages): string {
+  const overheadRules = estimateTokens(t.planRules)
+  const overheadTools =
+    estimateTokens(
+      [t.planToolDescription, t.taskToolDescription, t.goalDescription, t.tasksDescription, t.idDescription, t.noteDescription].join(' '),
+    ) + 70
+  const overhead = t.statsOverhead(fmtTokens(overheadRules), fmtTokens(overheadTools), fmtTokens(overheadRules + overheadTools))
+  if (b.tasks.length === 0 && billableOf(b.untracked) === 0) return `${t.statsNoPlan}\n${overhead}`
+
+  const usd = (n: number) => (n > 0 ? fmtUsd(n) : '')
+  const rows = b.tasks.map(task => {
+    const all = sumUsage(task.usage, task.agentUsage)
+    const detail =
+      all.steps === 0 ? '' : t.tokensLine(fmtTokens(all.input + all.cacheWrite), fmtTokens(all.output), fmtTokens(all.cacheRead), '', '')
+    return t.statsRow(task.id, task.title, fmtTokens(billableOf(all)), detail, usd(task.cost))
+  })
+  const total =
+    b.tasks.reduce((n, task) => n + billableOf(task.usage) + billableOf(task.agentUsage), 0) + billableOf(b.untracked)
+  const cost = b.tasks.reduce((n, task) => n + task.cost, 0)
+  const lines = [t.statsTitle(b.goal || '-'), ...rows]
+  if (billableOf(b.untracked) > 0) lines.push(t.statsUntracked(fmtTokens(billableOf(b.untracked))))
+
+  return [...lines, t.statsTotal(fmtTokens(total), usd(cost)), '', overhead].join('\n')
+}
+
 // ---------------------------------------------------------------- the module
 
 export const register: Register = (on, options) => {
@@ -291,7 +356,7 @@ export const register: Register = (on, options) => {
     await $.command.register({
       name: 'taskboard',
       description: t.commandDescription,
-      argumentHint: '[open|close|history|clear|skip]',
+      argumentHint: '[open|close|history|clear|skip|stats]',
     })
     await $.tool.register({
       name: 'plan',
@@ -343,6 +408,13 @@ export const register: Register = (on, options) => {
 
     return next(e)
   }).catch(($, e, next) => next(e))
+
+  on('turn.step', async function* ($, e, next) {
+    const result = yield* next(e)
+    await recordUsage($, e.agentId ?? null, result.usage).catch(() => undefined)
+
+    return result
+  })
 
   on('tool.call', { tool: PLAN_TOOL }, async ($, e) => {
     const input = e as unknown as Record<string, unknown>
@@ -457,6 +529,7 @@ export const register: Register = (on, options) => {
       await clearBoard($)
       return { text: t.cleared }
     }
+    if (verb === 'stats') return { text: statsText(await read($, boardAtom), t) }
     if (verb === 'skip') {
       await update($, boardAtom, x => ({ ...x, needsPlan: false }))
       return { text: t.skipped }
@@ -622,6 +695,9 @@ export const register: Register = (on, options) => {
 
     // ---- the board: summary, then one row per task, cards for the ones in focus
     const elapsed = b.createdAt === null ? '' : ` · ${durationOf(now - b.createdAt)}`
+    const planTokens =
+      b.tasks.reduce((n, x) => n + billableOf(x.usage) + billableOf(x.agentUsage), 0) + billableOf(b.untracked)
+    const planCost = b.tasks.reduce((n, x) => n + x.cost, 0)
     const running = b.tasks.reduce((n, x) => n + x.agents.filter(a => a.status === 'running').length, 0) + b.looseAgents.filter(a => a.status === 'running').length
 
     const taskView = (task: Board['tasks'][number], i: number) => {
@@ -630,7 +706,8 @@ export const register: Register = (on, options) => {
       const isOpen = v.expanded === task.id
       const isCard = task.status === 'in_progress' || isOpen || v.expandAll
       const last = lastCheck(task)
-      const meta = `${ms === null ? '' : durationOf(ms)}${task.agents.length > 0 ? ` · ⚙${task.agents.length}` : ''}${last ? (last.ok ? ' · ✔' : ' · ✘') : ''}`
+      const spent = sumUsage(task.usage, task.agentUsage)
+      const meta = `${ms === null ? '' : durationOf(ms)}${spent.steps > 0 ? ` · ${fmtTokens(billableOf(spent))}` : ''}${task.agents.length > 0 ? ` · ⚙${task.agents.length}` : ''}${last ? (last.ok ? ' · ✔' : ' · ✘') : ''}`
 
       const titleRow = (
         <Box justifyContent="space-between" width={isCard ? W - 4 : W}>
@@ -654,6 +731,17 @@ export const register: Register = (on, options) => {
         <Box key={`card-${task.id}`} flexDirection="column" borderStyle="round" borderColor={color} paddingX={1} width={W}>
           {titleRow}
           <Text dimColor wrap="truncate">{t.taskDetail(t.status[task.status], task.calls, task.checks.length)}</Text>
+          {spent.steps > 0 ? (
+            <Text dimColor wrap="truncate">
+              {t.tokensLine(
+                fmtTokens(task.usage.input + task.usage.cacheWrite),
+                fmtTokens(task.usage.output),
+                fmtTokens(spent.cacheRead),
+                task.agentUsage.steps > 0 ? fmtTokens(billableOf(task.agentUsage)) : '',
+                task.cost > 0 ? fmtUsd(task.cost) : '',
+              )}
+            </Text>
+          ) : null}
           {task.agents.map(a => (
             <Text wrap="truncate" color={a.status === 'failed' ? 'red' : a.status === 'running' ? 'cyan' : 'gray'}>
               {`⚙ ${a.name} · ${t.agentStatus[a.status]}`}
@@ -713,6 +801,11 @@ export const register: Register = (on, options) => {
                 {counts.failed > 0 ? <Text color="red">{`   ✗ ${counts.failed}`}</Text> : null}
                 {running > 0 ? <Text color="cyan">{`   ${t.activeAgents(running)}`}</Text> : null}
               </Text>
+              {planTokens > 0 ? (
+                <Text dimColor wrap="truncate">
+                  {t.totalLine(fmtTokens(planTokens), planCost > 0 ? fmtUsd(planCost) : '')}
+                </Text>
+              ) : null}
             </Box>,
           )}
           {actions}

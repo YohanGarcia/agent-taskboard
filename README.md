@@ -32,6 +32,7 @@ Built and tested on Claude Code **2.1.296**. The Mods API is early access and ma
 - **Status from real events, not promises.** The first real tool call starts a task. Subagents are attached to the task they name (`t2: review types`). A test, build, lint or typecheck command that fails is recorded on the task, and the board **refuses to mark it done** until the check passes.
 - **Progress survives sessions.** The active plan and a history of up to 100 plans are stored per project. A plan that was in flight comes back paused.
 - **History with detail.** Open any past plan, see its tasks and final states, and resume it.
+- **Tokens and cost per task.** Each task shows what the main agent and its subagents spent (fresh input, output, cache) and the session cost while it ran, with a plan total. `/taskboard stats` prints the detail and the mod's own overhead.
 - **Where you are.** The bottom of the panel shows the project root and the git branch, and follows a `git checkout` run in the shell.
 
 ### Commands
@@ -40,6 +41,7 @@ Built and tested on Claude Code **2.1.296**. The Mods API is early access and ma
 | --- | --- |
 | `/taskboard` | Open the panel |
 | `/taskboard history` | Show the history (also in the panel) |
+| `/taskboard stats` | Tokens and cost per task, plus the mod's own per-request overhead (an estimate) |
 | `/taskboard clear` | Archive the plan and empty the board |
 | `/taskboard skip` | Do not require a plan for the current request |
 | `/taskboard close` | Close the panel |
@@ -73,13 +75,14 @@ Recognised checks out of the box: `npm|pnpm|yarn|bun run test/build/lint/check`,
 
 ## What it can see and what it keeps
 
-It observes your prompts (to detect complex requests), tool calls (names and inputs, to attribute work and checks) and subagents. It only answers with its own plan and task tools, and with a refusal of `Edit`/`Write` while a plan is missing. It **never** rewrites a tool call or a prompt.
+It observes your prompts (to detect complex requests), tool calls (names and inputs, to attribute work and checks), subagents and the token counts of each model request (numbers only, to attribute them to a task). It only answers with its own plan and task tools, and with a refusal of `Edit`/`Write` while a plan is missing. It **never** rewrites a tool call or a prompt.
 
 It keeps the plan, the history and check commands (clipped to 80 characters) in Claude Code's own per-plugin store, on your machine. It makes no network requests, runs no processes of its own and writes no files. To show the branch it **reads one file**, `.git/HEAD` (walking up from the project folder); it never runs `git`.
 
 ## Known limits
 
 - It depends on the model calling `plan` and `task`; if it does not, the board stays empty.
+- Tokens are attributed to the task that is active when the request finishes; requests made before the first task starts count as "no task". Cost is the session's cost while a task ran, so work on two tasks in parallel is not split.
 - "Complex request" is a heuristic (action words, lists, length) and can be wrong either way. Use `planMode: warn` or `/taskboard skip`.
 - A check is recognised by its command text, so unusual script names need `extraChecks`.
 - Subagents with no task id in their description go to the active task, which may not be theirs.

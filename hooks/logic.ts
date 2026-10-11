@@ -1,4 +1,8 @@
-import type { Board, Check, HistoryEntry, Task, TaskStatus } from '../types'
+import type { Board, Check, HistoryEntry, Task, TaskStatus, Usage } from '../types'
+
+export function emptyUsage(): Usage {
+  return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, steps: 0 }
+}
 
 export const EMPTY_BOARD: Board = {
   goal: '',
@@ -6,6 +10,7 @@ export const EMPTY_BOARD: Board = {
   tasks: [],
   activeId: null,
   looseAgents: [],
+  untracked: emptyUsage(),
   needsPlan: false,
   isArchived: false,
   isResumed: false,
@@ -97,6 +102,10 @@ export function boardFromEntry(
       agents: [],
       checks: [],
       note: t.status === 'done' || t.status === 'pending' ? '' : noteOf(t.status),
+      usage: emptyUsage(),
+      agentUsage: emptyUsage(),
+      cost: 0,
+      costMark: null,
     })),
   }
 }
@@ -172,6 +181,10 @@ export function tasksFrom(input: unknown): Task[] {
       agents: [],
       checks: [],
       note: '',
+      usage: emptyUsage(),
+      agentUsage: emptyUsage(),
+      cost: 0,
+      costMark: null,
     }))
 }
 
@@ -200,6 +213,8 @@ export function historyEntryOf(board: Board, now: number, reason: HistoryEntry['
     done,
     failed: board.tasks.filter(t => t.status === 'failed').length,
     reason,
+    tokens: board.tasks.reduce((n, t) => n + billableOf(t.usage) + billableOf(t.agentUsage), 0) + billableOf(board.untracked),
+    cost: Math.round(board.tasks.reduce((n, t) => n + (t.cost ?? 0), 0) * 10_000) / 10_000,
     tasks: board.tasks.map(t => ({ title: clip(t.title, 100), status: t.status })),
   }
 }
@@ -251,4 +266,87 @@ export function parentOf(path: string): string | null {
   const parent = path.slice(0, cut)
 
   return /^[A-Za-z]:$/.test(parent) ? `${parent}${path[cut]}` : parent
+}
+
+// ---------------------------------------------------------------- tokens and cost
+
+/** One model request's usage as the API spells it; any field may be missing. */
+export type StepUsage = {
+  input_tokens?: number | null
+  output_tokens?: number | null
+  cache_creation_input_tokens?: number | null
+  cache_read_input_tokens?: number | null
+} | null
+
+export function addUsage(into: Usage | undefined, step: StepUsage): Usage {
+  const u = into ?? emptyUsage()
+  if (!step) return u
+
+  return {
+    input: u.input + (step.input_tokens ?? 0),
+    output: u.output + (step.output_tokens ?? 0),
+    cacheRead: u.cacheRead + (step.cache_read_input_tokens ?? 0),
+    cacheWrite: u.cacheWrite + (step.cache_creation_input_tokens ?? 0),
+    steps: u.steps + 1,
+  }
+}
+
+export function sumUsage(a: Usage | undefined, b: Usage | undefined): Usage {
+  const x = a ?? emptyUsage()
+  const y = b ?? emptyUsage()
+
+  return {
+    input: x.input + y.input,
+    output: x.output + y.output,
+    cacheRead: x.cacheRead + y.cacheRead,
+    cacheWrite: x.cacheWrite + y.cacheWrite,
+    steps: x.steps + y.steps,
+  }
+}
+
+/** What a request really sent and got: fresh input, cache writes and output. Cache reads are the cheap part. */
+export function billableOf(u: Usage | undefined): number {
+  return u ? u.input + u.cacheWrite + u.output : 0
+}
+
+/** `842`, `12.4k`, `1.3M`. */
+export function fmtTokens(n: number): string {
+  if (n < 1000) return String(Math.round(n))
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`
+
+  return `${(n / 1_000_000).toFixed(1)}M`
+}
+
+/** `$0.04`, `$1.20`. */
+export function fmtUsd(n: number): string {
+  return `$${n.toFixed(n < 10 ? 2 : 1)}`
+}
+
+/** A rough token count for a text the mod adds to every request (about 4 characters a token). */
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4)
+}
+
+/** A stored task from an older version, brought up to the current shape. */
+export function normalizeTask(t: Task): Task {
+  return {
+    ...t,
+    usage: t.usage ?? emptyUsage(),
+    agentUsage: t.agentUsage ?? emptyUsage(),
+    cost: typeof t.cost === 'number' ? t.cost : 0,
+    costMark: typeof t.costMark === 'number' ? t.costMark : null,
+  }
+}
+
+/** Closes a running stretch: the session cost since the mark joins the task's own. */
+export function settleCost(task: Task, cost: number | null): Task {
+  if (task.costMark === null) return task
+  const added = cost === null ? 0 : Math.max(0, cost - task.costMark)
+
+  return { ...task, cost: task.cost + added, costMark: null }
+}
+
+/** Opens a running stretch at the session cost now. */
+export function markCost(task: Task, cost: number | null): Task {
+  return { ...task, costMark: cost }
 }

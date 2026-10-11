@@ -3,7 +3,9 @@
 agent-taskboard observes your session (prompts, tool calls, subagents) and keeps short summaries
 of plans and check commands in Claude Code's own per-plugin store on your machine. It makes no
 network requests, runs no processes of its own and writes no files. The only file it reads is
-`.git/HEAD` (or the `.git` file of a worktree), to show the branch.
+`.git/HEAD` (or the `.git` file of a worktree), to show the branch. It also reads the token
+counts and the session cost that Claude Code reports, to show them per task; it never sees
+the content of a request or a response.
 
 What it can do to your session:
 

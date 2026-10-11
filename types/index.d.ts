@@ -19,6 +19,16 @@ export type Check = {
   at: number
 }
 
+/** Tokens as the API counts them, summed over the model requests of a task. */
+export type Usage = {
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+  /** Model requests counted. */
+  steps: number
+}
+
 export type Task = {
   id: string
   title: string
@@ -29,6 +39,14 @@ export type Task = {
   agents: AgentRun[]
   checks: Check[]
   note: string
+  /** The main agent's requests while this task was the active one. */
+  usage: Usage
+  /** The requests of the subagents that belong to this task. */
+  agentUsage: Usage
+  /** Session cost (USD) accumulated while the task ran. */
+  cost: number
+  /** The session cost when the running stretch began; null when not running. */
+  costMark: number | null
 }
 
 export type Board = {
@@ -37,6 +55,8 @@ export type Board = {
   tasks: Task[]
   activeId: string | null
   looseAgents: AgentRun[]
+  /** Requests made while no task was active. */
+  untracked: Usage
   /** A complex request came in and no plan exists yet. */
   needsPlan: boolean
   /** The plan was stored in history already (finished or replaced). */
@@ -54,6 +74,10 @@ export type HistoryEntry = {
   done: number
   failed: number
   reason: 'completed' | 'replaced' | 'cleared'
+  /** Billable tokens of the plan (input + cache writes + output); absent in older entries. */
+  tokens?: number
+  /** Session cost of the plan in USD; absent in older entries. */
+  cost?: number
   tasks: { title: string; status: TaskStatus }[]
 }
 

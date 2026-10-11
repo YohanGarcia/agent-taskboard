@@ -33,6 +33,8 @@ pane in `tests/pane.test.ts`.
 - **`$` is passed only to top-level function declarations** in `register.tsx`; keep pure logic
   in `logic.ts` and text in `i18n.ts`.
 - **Every message exists in `es` and `en`.** `tests/en.test.ts` fails if the keys differ.
+- Token numbers come from `turn.step`'s `usage` and cost from `$.session.usage()`; never read a
+  request's content to count tokens.
 - Keep the panel readable at 40 columns.
 
 ## Reporting bugs
