@@ -22,20 +22,20 @@
   "types": "./types/index.d.ts",
   "userConfig": {
     "openOnStart": {
-      "title": "Abrir al iniciar",
-      "description": "Abrir el panel del tablero al iniciar la sesión",
+      "title": "Abrir al iniciar / Open on start",
+      "description": "Abrir el panel del tablero al iniciar la sesión / Open the board panel when the session starts",
       "type": "boolean",
       "default": true
     },
     "minPromptChars": {
-      "title": "Umbral de complejidad",
-      "description": "Longitud mínima (caracteres) de una solicitud para considerarla compleja; también la detectan varias acciones o listas",
+      "title": "Umbral de complejidad / Complexity threshold",
+      "description": "Longitud mínima (caracteres) de una solicitud para considerarla compleja; también la detectan varias acciones o listas / Minimum length (characters) for a request to count as complex; several actions or lists also trigger it",
       "type": "number",
       "default": 240
     },
     "planMode": {
-      "title": "Modo del plan",
-      "description": "block: bloquea Edit/Write hasta que haya plan; warn: solo avisa en el panel; off: no vigila",
+      "title": "Modo del plan / Plan mode",
+      "description": "block: bloquea Edit/Write hasta que haya plan; warn: solo avisa en el panel; off: no vigila / block: Edit/Write wait for a plan; warn: only a notice in the panel; off: no guard",
       "type": "string",
       "options": [
         "block",
@@ -45,14 +45,14 @@
       "default": "block"
     },
     "extraChecks": {
-      "title": "Verificaciones extra",
-      "description": "Comandos que cuentan como verificación, separados por coma (basta con un fragmento, p. ej. 'composer test, artisan test')",
+      "title": "Verificaciones extra / Extra checks",
+      "description": "Comandos que cuentan como verificación, separados por coma (basta con un fragmento, p. ej. 'composer test, artisan test') / Commands that count as a check, comma-separated (a fragment is enough, e.g. 'composer test, artisan test')",
       "type": "string",
       "default": ""
     },
     "language": {
       "title": "Idioma / Language",
-      "description": "auto: sigue el idioma del sistema (es o en); también es o en",
+      "description": "auto: sigue el idioma del sistema (es o en); también es o en / auto: follows the system language (es or en); or es / en",
       "type": "string",
       "options": [
         "auto",
