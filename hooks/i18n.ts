@@ -74,6 +74,9 @@ export type Messages = {
   looseAgents: (names: string) => string
   helpTask: string
   helpBoard: string
+  rootLabel: string
+  branchLabel: string
+  noBranch: string
 }
 
 const es: Messages = {
@@ -155,6 +158,9 @@ const es: Messages = {
   looseAgents: names => `sin tarea: ${names}`,
   helpTask: 'i iniciar · d hecha · b bloquear · f falló · e todo',
   helpBoard: '1-9 abre una tarea · e todo · h historial · l limpiar',
+  rootLabel: 'raíz',
+  branchLabel: 'rama',
+  noBranch: 'sin git',
 }
 
 const en: Messages = {
@@ -235,6 +241,9 @@ const en: Messages = {
   looseAgents: names => `no task: ${names}`,
   helpTask: 'i start · d done · b block · f failed · e all',
   helpBoard: '1-9 open a task · e all · h history · l clear',
+  rootLabel: 'root',
+  branchLabel: 'branch',
+  noBranch: 'no git',
 }
 
 const TABLE: Record<Lang, Messages> = { es, en }

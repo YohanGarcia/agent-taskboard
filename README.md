@@ -32,6 +32,7 @@ Built and tested on Claude Code **2.1.296**. The Mods API is early access and ma
 - **Status from real events, not promises.** The first real tool call starts a task. Subagents are attached to the task they name (`t2: review types`). A test, build, lint or typecheck command that fails is recorded on the task, and the board **refuses to mark it done** until the check passes.
 - **Progress survives sessions.** The active plan and a history of up to 100 plans are stored per project. A plan that was in flight comes back paused.
 - **History with detail.** Open any past plan, see its tasks and final states, and resume it.
+- **Where you are.** The bottom of the panel shows the project root and the git branch, and follows a `git checkout` run in the shell.
 
 ### Commands
 
@@ -74,7 +75,7 @@ Recognised checks out of the box: `npm|pnpm|yarn|bun run test/build/lint/check`,
 
 It observes your prompts (to detect complex requests), tool calls (names and inputs, to attribute work and checks) and subagents. It only answers with its own plan and task tools, and with a refusal of `Edit`/`Write` while a plan is missing. It **never** rewrites a tool call or a prompt.
 
-It keeps the plan, the history and check commands (clipped to 80 characters) in Claude Code's own per-plugin store, on your machine. It makes no network requests, runs no processes of its own and writes no files.
+It keeps the plan, the history and check commands (clipped to 80 characters) in Claude Code's own per-plugin store, on your machine. It makes no network requests, runs no processes of its own and writes no files. To show the branch it **reads one file**, `.git/HEAD` (walking up from the project folder); it never runs `git`.
 
 ## Known limits
 
@@ -107,7 +108,8 @@ Layout: `hooks/register.tsx` (the hooks and the panel), `hooks/logic.ts` (pure f
 - **Estados desde eventos reales:** una verificación que falla (tests, build, lint, tsc) impide marcar la tarea como hecha.
 - **Idioma:** `language: auto` sigue el idioma del sistema; también `es` o `en`.
 - **Modo del plan:** `block` bloquea Edit/Write sin plan, `warn` solo avisa, `off` no vigila.
-- **Privacidad:** no usa red ni procesos; todo se guarda en el almacén local del plugin.
+- **Dónde estás:** el pie del panel muestra la raíz del proyecto y la rama de git.
+- **Privacidad:** no usa red ni procesos; solo lee `.git/HEAD` para la rama y guarda todo en el almacén local del plugin.
 
 ## License
 

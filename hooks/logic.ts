@@ -211,3 +211,44 @@ export function stampOf(ms: number): string {
 
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
+
+// ---------------------------------------------------------------- project
+
+/** The branch a `.git/HEAD` text names; a detached HEAD reads as its short hash in parentheses. */
+export function branchFromHead(text: string): string | null {
+  const line = text.trim().split(/\r?\n/)[0] ?? ''
+  const ref = /^ref:\s*refs\/heads\/(.+)$/.exec(line)
+  if (ref?.[1]) return ref[1].trim()
+  if (/^[0-9a-f]{7,40}$/i.test(line)) return `(${line.slice(0, 7)})`
+
+  return null
+}
+
+/** The git directory a `.git` file (a worktree or a submodule) points to, or null. */
+export function gitDirFromFile(text: string): string | null {
+  const match = /^gitdir:\s*(.+)$/m.exec(text.trim())
+
+  return match?.[1]?.trim() ?? null
+}
+
+/** Keeps the end of a long path: `…\money\Money-Fast-Web`. */
+export function tailClip(text: string, max: number): string {
+  if (max <= 1) return ''
+
+  if (text.length <= max) return text
+
+  // Start at a folder boundary when that still keeps most of the room, not in the middle of a name.
+  const tail = text.slice(-(max - 1))
+  const sep = tail.search(/[\\/]/)
+
+  return `…${sep > 0 && sep < tail.length - 4 ? tail.slice(sep) : tail}`
+}
+
+/** The parent folder of a path, or null at the top. Works with `\` and `/`. */
+export function parentOf(path: string): string | null {
+  const cut = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
+  if (cut <= 0) return null
+  const parent = path.slice(0, cut)
+
+  return /^[A-Za-z]:$/.test(parent) ? `${parent}${path[cut]}` : parent
+}

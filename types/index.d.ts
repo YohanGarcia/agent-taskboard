@@ -67,12 +67,20 @@ export type View = {
   historyOpen: number | null
 }
 
+/** Where the session runs: the project folder and the git branch checked out there. */
+export type Project = {
+  root: string
+  /** `null` outside a git repository; `(abc1234)` for a detached HEAD. */
+  branch: string | null
+}
+
 declare module 'claude-code' {
   interface PluginState {
     'agent-taskboard': {
       board: Board
       view: View
       history: HistoryEntry[]
+      project: Project
     }
   }
 }

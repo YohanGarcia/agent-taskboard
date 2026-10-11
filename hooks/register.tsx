@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { AgentRun, Board, HistoryEntry, TaskStatus, View } from '../types'
+import type { AgentRun, Board, HistoryEntry, Project, TaskStatus, View } from '../types'
 import { messages, resolveLang, systemLocale } from './i18n'
 import type { Messages } from './i18n'
 import {
@@ -9,18 +9,22 @@ import {
   GLYPH,
   STATUSES,
   boardFromEntry,
+  branchFromHead,
   checkKindOf,
   clip,
   countsOf,
   durationOf,
   elapsedOf,
   gauge,
+  gitDirFromFile,
   historyEntryOf,
   isFinished,
   lastCheck,
   looksComplex,
+  parentOf,
   progressOf,
   stampOf,
+  tailClip,
   taskIdFrom,
   tasksFrom,
   withTask,
@@ -36,8 +40,45 @@ const boardAtom = atom({ plugin: 'agent-taskboard', key: 'board' } as const, EMP
 const FRESH_VIEW: View = { mode: 'board', expanded: null, expandAll: false, historyOpen: null }
 const viewAtom = atom({ plugin: 'agent-taskboard', key: 'view' } as const, FRESH_VIEW)
 const historyAtom = atom({ plugin: 'agent-taskboard', key: 'history' } as const, [] as HistoryEntry[])
+const projectAtom = atom({ plugin: 'agent-taskboard', key: 'project' } as const, { root: '', branch: null } as Project)
 
 let ticker: Timer | null = null
+
+// ---------------------------------------------------------------- project root and branch
+
+/** Reads `.git/HEAD` by walking up from the project folder: no process, only file reads. */
+async function readBranch($: EngineInterface, root: string): Promise<string | null> {
+  const sep = root.includes('\\') ? '\\' : '/'
+  let dir: string | null = root
+
+  for (let i = 0; i < 8 && dir !== null; i += 1) {
+    const dot = `${dir.replace(/[\\/]+$/, '')}${sep}.git`
+    try {
+      const stat = await $.fs.stat(dot)
+      let gitDir = dot
+      if (stat.kind === 'file') {
+        const raw = await $.fs.read(dot)
+        const pointed = gitDirFromFile(typeof raw === 'string' ? raw : '')
+        if (!pointed) return null
+        gitDir = /^([A-Za-z]:|[\\/])/.test(pointed) ? pointed : `${dir}${sep}${pointed}`
+      }
+      const head = await $.fs.read(`${gitDir}${sep}HEAD`)
+
+      return branchFromHead(typeof head === 'string' ? head : '')
+    } catch {
+      dir = parentOf(dir)
+    }
+  }
+
+  return null
+}
+
+async function refreshProject($: EngineInterface): Promise<void> {
+  const root = await $.session.cwd()
+  const branch = await readBranch($, root)
+
+  await update($, projectAtom, cur => (cur.root === root && cur.branch === branch ? cur : { root, branch }))
+}
 
 // ---------------------------------------------------------------- persistence
 
@@ -280,6 +321,7 @@ export const register: Register = (on, options) => {
       isDeferred: false,
     })
     await restore($, t)
+    await refreshProject($).catch(() => undefined)
     await syncTicker($)
     if (isOpenOnStart) void $.ui.open({ id: PANE, title: t.paneTitle, columns: 52 }).catch(() => undefined)
 
@@ -354,6 +396,8 @@ export const register: Register = (on, options) => {
     if (!e.agentId) {
       const isOk = ran.deny === undefined && ran.isError !== true
       await afterCall($, tool, e as unknown as Record<string, unknown>, isOk, extraChecks)
+      // A shell command may have switched branch.
+      if (tool === 'Bash' || tool === 'PowerShell') await refreshProject($).catch(() => undefined)
     }
 
     return ran
@@ -428,7 +472,13 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     // Never name a local `h`: JSX compiles to calls of the global `h`.
-    const [b, v, past, now] = await Promise.all([read($, boardAtom), read($, viewAtom), read($, historyAtom), $.clock.now()])
+    const [b, v, past, proj, now] = await Promise.all([
+      read($, boardAtom),
+      read($, viewAtom),
+      read($, historyAtom),
+      read($, projectAtom),
+      $.clock.now(),
+    ])
     const FULL = Math.max(34, e.props.bodyColumns)
     // The panel pads itself (2 columns each side), so W is what fits inside.
     const W = FULL - 4
@@ -468,6 +518,23 @@ export const register: Register = (on, options) => {
           onPress={() => update($, viewAtom, x => ({ ...x, mode: x.mode === 'board' ? ('history' as const) : ('board' as const) }))}
         />
         <Button key="clear" hotkey="l" label={t.clear} dimColor={b.tasks.length === 0} onPress={() => clearBoard($)} />
+      </Box>
+    )
+
+    // ---- where the session runs: the project folder and its branch, at the bottom of every view
+    const place = (
+      <Box flexDirection="column" width={W}>
+        <Text color="gray">{'─'.repeat(Math.max(1, W))}</Text>
+        <Text wrap="truncate">
+          <Text dimColor>{`${t.rootLabel}: `}</Text>
+          <Text>{tailClip(proj.root, W - t.rootLabel.length - 2)}</Text>
+        </Text>
+        <Text wrap="truncate">
+          <Text dimColor>{`${t.branchLabel}: `}</Text>
+          <Text color="magenta" bold>
+            {proj.branch ?? t.noBranch}
+          </Text>
+        </Text>
       </Box>
     )
 
@@ -515,6 +582,7 @@ export const register: Register = (on, options) => {
             )
           })}
           <Text dimColor wrap="truncate">{t.historyHelp}</Text>
+          {place}
         </Box>
       )
     }
@@ -542,6 +610,7 @@ export const register: Register = (on, options) => {
           {notice}
           {notice === null ? <Text dimColor wrap="wrap">{t.noPlanHint}</Text> : null}
           {past.length > 0 ? <Text dimColor>{t.historyHint(past.length)}</Text> : null}
+          {place}
         </Box>
       )
     }
@@ -652,6 +721,7 @@ export const register: Register = (on, options) => {
         <Text dimColor wrap="truncate">
           {v.expanded !== null ? t.helpTask : t.helpBoard}
         </Text>
+        {place}
       </Box>
     )
   })

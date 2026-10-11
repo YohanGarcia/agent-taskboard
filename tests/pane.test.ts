@@ -19,6 +19,9 @@ test('el panel dibuja el tablero vacío y con un plan', { options: { language: '
   const empty = await $.ui.mount(target as never)
   expect(await empty.find({ text: /TABLERO/ })).toBeDefined()
   expect(await empty.find({ text: /Sin plan/ })).toBeDefined()
+  // The footer is always there: the project root and the branch.
+  expect(await empty.find({ text: /raíz/ })).toBeDefined()
+  expect(await empty.find({ text: /rama/ })).toBeDefined()
   await empty.unmount()
 
   await $.tool.call({ tool: 'mcp__agent-taskboard__plan', goal: 'Probar el panel', tasks: ['Primera', 'Segunda'] })

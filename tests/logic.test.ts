@@ -2,14 +2,18 @@ import { expect, test } from 'claude-code/testing'
 
 import {
   boardFromEntry,
+  branchFromHead,
   checkKindOf,
   clip,
   countsOf,
   durationOf,
+  gitDirFromFile,
   historyEntryOf,
   isFinished,
   looksComplex,
+  parentOf,
   progressOf,
+  tailClip,
   taskIdFrom,
   tasksFrom,
 } from '../hooks/logic'
@@ -95,4 +99,24 @@ test('historyEntryOf resume un plan terminado', () => {
   expect(entry?.done).toBe(2)
   expect(entry?.durationMs).toBe(8000)
   expect(historyEntryOf(EMPTY_BOARD, 1, 'cleared')).toBe(null)
+})
+
+test('branchFromHead lee la rama o un HEAD desacoplado', () => {
+  expect(branchFromHead('ref: refs/heads/main\n')).toBe('main')
+  expect(branchFromHead('ref: refs/heads/feat/web-cash\r\n')).toBe('feat/web-cash')
+  expect(branchFromHead('f995d6a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6\n')).toBe('(f995d6a)')
+  expect(branchFromHead('')).toBe(null)
+  expect(branchFromHead('basura')).toBe(null)
+})
+
+test('gitDirFromFile, parentOf y tailClip', () => {
+  expect(gitDirFromFile('gitdir: ../.git/worktrees/x\n')).toBe('../.git/worktrees/x')
+  expect(gitDirFromFile('otra cosa')).toBe(null)
+  expect(parentOf('E:\\proyectos\\money\\Money-Fast-Web')).toBe('E:\\proyectos\\money')
+  expect(parentOf('/home/yo/proyecto')).toBe('/home/yo')
+  expect(parentOf('E:\\proyectos')).toBe('E:\\')
+  expect(parentOf('/')).toBe(null)
+  expect(tailClip('corto', 20)).toBe('corto')
+  expect(tailClip('E:\\proyectos\\money\\Money-Fast-Web', 20)).toBe('…\\Money-Fast-Web')
+  expect(tailClip('E:\\proyectos\\money\\Money-Fast-Web', 14)).toBe('…oney-Fast-Web')
 })

@@ -26,6 +26,7 @@ pane in `tests/pane.test.ts`.
 ## Rules of the road
 
 - **Only the official Mods API.** No MCP server, no network, no child processes, no file writes.
+  The only file read is `.git/HEAD`, for the branch shown in the panel.
 - **Hooks observe.** Do not rewrite a user's prompt or a tool call. The only refusals are the
   plan guard on `Edit`/`Write` and `done` on a task whose last check failed.
 - **Never name a local variable `h`** in a `.tsx` file: JSX compiles to calls of a global `h`.
