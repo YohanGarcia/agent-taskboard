@@ -4,6 +4,8 @@
 
 `agent-taskboard` is a [Claude Code](https://claude.com/claude-code) **mod**: it uses the official Mods API only. No MCP server, no background processes, no network, no files written outside Claude Code's own plugin store.
 
+![The task board panel next to a Claude Code session: progress, the running task with its checks, tokens and cost, and the project root and branch in the footer](docs/panel.png)
+
 [Español](#español) · [Install](#install) · [What it does](#what-it-does) · [Configure](#configure) · [Privacy](#what-it-can-see-and-what-it-keeps) · [Develop](#develop)
 
 ## Install
@@ -27,9 +29,10 @@ Built and tested on Claude Code **2.1.296**. The Mods API is early access and ma
 
 ## What it does
 
-- **Side panel with your tasks.** A card for the plan: goal, progress bar, percentage and elapsed time, counters by status, and one row per task with its duration, subagents and check result. Press a task (or its number) to open its detail and action buttons.
+- **Side panel with your tasks.** A card for the plan: goal, progress bar, percentage and working time (the hours a plan sat open between sessions are not counted), counters by status, and one row per task with its duration, subagents and check result. Press a task (or its number) to open its detail and action buttons.
 - **A plan before the work.** Claude is told to register a plan for complex requests. If a request looks complex and no plan exists, `Edit`/`Write` are blocked until Claude registers one (switchable, see `planMode`).
 - **Status from real events, not promises.** The first real tool call starts a task. Subagents are attached to the task they name (`t2: review types`). A test, build, lint or typecheck command that fails is recorded on the task, and the board **refuses to mark it done** until the check passes.
+- **Plan mode and todo lists show up by themselves.** The plan you approve in plan mode and Claude Code's own `TodoWrite` list are mirrored on the board (statuses included); `plan`/`task` stay available as the explicit way.
 - **Progress survives sessions.** The active plan and a history of up to 100 plans are stored per project. A plan that was in flight comes back paused.
 - **History with detail.** Open any past plan, see its tasks and final states, and resume it.
 - **Tokens and cost per task.** Each task shows what the main agent and its subagents spent (fresh input, output, cache) and the session cost while it ran, with a plan total. `/taskboard stats` prints the detail and the mod's own overhead.
@@ -81,7 +84,7 @@ It keeps the plan, the history and check commands (clipped to 80 characters) in 
 
 ## Known limits
 
-- It depends on the model calling `plan` and `task`; if it does not, the board stays empty.
+- It fills from `plan`/`task`, plan mode (`ExitPlanMode`) and `TodoWrite`. Newer task tools (`TaskCreate`/`TaskUpdate`) are not mirrored yet.
 - Tokens are attributed to the task that is active when the request finishes; requests made before the first task starts count as "no task". Cost is the session's cost while a task ran, so work on two tasks in parallel is not split.
 - "Complex request" is a heuristic (action words, lists, length) and can be wrong either way. Use `planMode: warn` or `/taskboard skip`.
 - A check is recognised by its command text, so unusual script names need `extraChecks`.
@@ -108,6 +111,8 @@ Layout: `hooks/register.tsx` (the hooks and the panel), `hooks/logic.ts` (pure f
 /reload-plugins
 ```
 
+- **Plan nativo y lista de tareas:** el plan que apruebas en modo plan y la lista `TodoWrite` de Claude Code aparecen solos en el tablero, con sus estados.
+- **Tiempo de trabajo:** la duración de un plan suma solo los tramos en que hubo trabajo; las horas con el plan abierto entre sesiones no cuentan.
 - **Estados desde eventos reales:** una verificación que falla (tests, build, lint, tsc) impide marcar la tarea como hecha.
 - **Idioma:** `language: auto` sigue el idioma del sistema; también `es` o `en`.
 - **Modo del plan:** `block` bloquea Edit/Write sin plan, `warn` solo avisa, `off` no vigila.

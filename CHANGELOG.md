@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-10-11
+
+### Added
+- Claude Code's own plan is mirrored on the board: the plan approved in plan mode (`ExitPlanMode`) and the
+  `TodoWrite` list become tasks, with their statuses, without the model calling `plan`.
+
+### Changed
+- A plan's duration is the time spent working on it (the union of its tasks' running stretches), not the clock time since it was created: a plan left open overnight no longer reads as 12 hours.
+- Check commands are shown without the leading `cd <folder> &&`, so a clipped command still says what ran.
+- The README shows the panel (`docs/panel.png`).
+
+### Fixed
+- A plan approved in plan mode or a `TodoWrite` list now lifts the "no plan yet" guard on `Edit`/`Write`.
+- The plan-guard no longer blocks writing the plan file (`.claude/plans/`), which made plan mode impossible to finish while a complex request was pending.
+- A board fed by `TodoWrite` is no longer auto-started by the first tool call: the list's statuses are the truth.
+
 ## [0.4.0] - 2026-10-10
 
 ### Added
