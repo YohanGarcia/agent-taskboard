@@ -482,7 +482,8 @@ export const register: Register = (on, options) => {
     const FULL = Math.max(34, e.props.bodyColumns)
     // The panel pads itself (2 columns each side), so W is what fits inside.
     const W = FULL - 4
-    const rows = e.viewport?.rows ?? 24
+    // The pane's own height: the footer sits at its bottom edge, whatever the content.
+    const rows = e.props.scroll?.bodyRows ?? e.viewport?.rows ?? 24
     const { done, total, percent } = progressOf(b.tasks)
     const counts = countsOf(b.tasks)
     const isHistory = v.mode === 'history'
@@ -544,44 +545,46 @@ export const register: Register = (on, options) => {
       const shown = past.slice(-room).reverse()
 
       return (
-        <Box flexDirection="column" width={FULL} paddingX={2} paddingY={1} rowGap={1}>
-          {card(t.historyTitle, t.plansCount(past.length), <Text dimColor>{t.savedPlans}</Text>)}
-          {actions}
-          {shown.length === 0 ? <Text dimColor>{t.noFinished}</Text> : null}
-          {shown.map((entry, i) => {
-            const isOpen = v.historyOpen === entry.startedAt
-            const markColor = entry.reason === 'completed' ? 'green' : entry.reason === 'replaced' ? 'yellow' : 'gray'
-            const mark = entry.reason === 'completed' ? '✓' : entry.reason === 'replaced' ? '↻' : '✗'
+        <Box flexDirection="column" width={FULL} minHeight={rows} paddingX={2} paddingY={1} justifyContent="space-between">
+          <Box flexDirection="column" width={W} rowGap={1}>
+            {card(t.historyTitle, t.plansCount(past.length), <Text dimColor>{t.savedPlans}</Text>)}
+            {actions}
+            {shown.length === 0 ? <Text dimColor>{t.noFinished}</Text> : null}
+            {shown.map((entry, i) => {
+              const isOpen = v.historyOpen === entry.startedAt
+              const markColor = entry.reason === 'completed' ? 'green' : entry.reason === 'replaced' ? 'yellow' : 'gray'
+              const mark = entry.reason === 'completed' ? '✓' : entry.reason === 'replaced' ? '↻' : '✗'
 
-            return (
-              <Box flexDirection="column" borderStyle={isOpen ? 'round' : undefined} borderColor={isOpen ? markColor : undefined} paddingX={isOpen ? 1 : 0}>
-                <Box>
-                  <Text color={markColor}>{`${mark} `}</Text>
-                  <Button
-                    key={`hist-${entry.startedAt}`}
-                    plain
-                    hotkey={i < 9 ? String(i + 1) : undefined}
-                    label={clip(entry.goal, Math.max(10, W - 8))}
-                    onPress={() => update($, viewAtom, x => ({ ...x, historyOpen: x.historyOpen === entry.startedAt ? null : entry.startedAt }))}
-                  />
-                </Box>
-                <Text dimColor wrap="truncate">{`  ${entry.done}/${entry.total} · ${durationOf(entry.durationMs)} · ${stampOf(entry.startedAt)}`}</Text>
-                {isOpen ? (
-                  <Box flexDirection="column">
-                    {entry.tasks.map(task => (
-                      <Text wrap="truncate" color={colorOf(task.status)}>
-                        {`  ${GLYPH[task.status]} ${clip(task.title, W - 8)}`}
-                      </Text>
-                    ))}
-                    <Box columnGap={2}>
-                      <Button key={`reopen-${entry.startedAt}`} plain hotkey="r" label={t.reopen} onPress={() => reopenEntry($, entry, t)} />
-                    </Box>
+              return (
+                <Box flexDirection="column" borderStyle={isOpen ? 'round' : undefined} borderColor={isOpen ? markColor : undefined} paddingX={isOpen ? 1 : 0}>
+                  <Box>
+                    <Text color={markColor}>{`${mark} `}</Text>
+                    <Button
+                      key={`hist-${entry.startedAt}`}
+                      plain
+                      hotkey={i < 9 ? String(i + 1) : undefined}
+                      label={clip(entry.goal, Math.max(10, W - 8))}
+                      onPress={() => update($, viewAtom, x => ({ ...x, historyOpen: x.historyOpen === entry.startedAt ? null : entry.startedAt }))}
+                    />
                   </Box>
-                ) : null}
-              </Box>
-            )
-          })}
-          <Text dimColor wrap="truncate">{t.historyHelp}</Text>
+                  <Text dimColor wrap="truncate">{`  ${entry.done}/${entry.total} · ${durationOf(entry.durationMs)} · ${stampOf(entry.startedAt)}`}</Text>
+                  {isOpen ? (
+                    <Box flexDirection="column">
+                      {entry.tasks.map(task => (
+                        <Text wrap="truncate" color={colorOf(task.status)}>
+                          {`  ${GLYPH[task.status]} ${clip(task.title, W - 8)}`}
+                        </Text>
+                      ))}
+                      <Box columnGap={2}>
+                        <Button key={`reopen-${entry.startedAt}`} plain hotkey="r" label={t.reopen} onPress={() => reopenEntry($, entry, t)} />
+                      </Box>
+                    </Box>
+                  ) : null}
+                </Box>
+              )
+            })}
+            <Text dimColor wrap="truncate">{t.historyHelp}</Text>
+          </Box>
           {place}
         </Box>
       )
@@ -604,12 +607,14 @@ export const register: Register = (on, options) => {
 
     if (b.tasks.length === 0) {
       return (
-        <Box flexDirection="column" width={FULL} paddingX={2} paddingY={1} rowGap={1}>
-          {card(t.boardTitle, '', <Text dimColor>{t.noPlanBody}</Text>)}
-          {actions}
-          {notice}
-          {notice === null ? <Text dimColor wrap="wrap">{t.noPlanHint}</Text> : null}
-          {past.length > 0 ? <Text dimColor>{t.historyHint(past.length)}</Text> : null}
+        <Box flexDirection="column" width={FULL} minHeight={rows} paddingX={2} paddingY={1} justifyContent="space-between">
+          <Box flexDirection="column" width={W} rowGap={1}>
+            {card(t.boardTitle, '', <Text dimColor>{t.noPlanBody}</Text>)}
+            {actions}
+            {notice}
+            {notice === null ? <Text dimColor wrap="wrap">{t.noPlanHint}</Text> : null}
+            {past.length > 0 ? <Text dimColor>{t.historyHint(past.length)}</Text> : null}
+          </Box>
           {place}
         </Box>
       )
@@ -684,43 +689,45 @@ export const register: Register = (on, options) => {
     }
 
     return (
-      <Box flexDirection="column" width={FULL} paddingX={2} paddingY={1} rowGap={1}>
-        {card(
-          t.boardTitle,
-          `${percent}%${elapsed}`,
-          <Box flexDirection="column">
-            <Text bold wrap="truncate">
-              {clip(b.goal, W - 4)}
-            </Text>
-            <Text wrap="truncate">
-              <Text color="green">{g.on}</Text>
-              <Text color="gray">{g.off}</Text>
-              <Text bold>{` ${done}/${total}`}</Text>
-            </Text>
-            <Text wrap="truncate">
-              <Text color="green">{`✓ ${counts.done}`}</Text>
-              <Text dimColor>{'   '}</Text>
-              <Text color="cyan">{`◐ ${counts.in_progress}`}</Text>
-              <Text dimColor>{'   '}</Text>
-              <Text color="gray">{`○ ${counts.pending}`}</Text>
-              {counts.blocked > 0 ? <Text color="yellow">{`   ⏸ ${counts.blocked}`}</Text> : null}
-              {counts.failed > 0 ? <Text color="red">{`   ✗ ${counts.failed}`}</Text> : null}
-              {running > 0 ? <Text color="cyan">{`   ${t.activeAgents(running)}`}</Text> : null}
-            </Text>
-          </Box>,
-        )}
-        {actions}
-        {notice}
-        {b.isResumed ? <Text dimColor>{t.resumedBanner}</Text> : null}
-        <Box flexDirection="column" width={W}>
-          {b.tasks.map((task, i) => taskView(task, i))}
+      <Box flexDirection="column" width={FULL} minHeight={rows} paddingX={2} paddingY={1} justifyContent="space-between">
+        <Box flexDirection="column" width={W} rowGap={1}>
+          {card(
+            t.boardTitle,
+            `${percent}%${elapsed}`,
+            <Box flexDirection="column">
+              <Text bold wrap="truncate">
+                {clip(b.goal, W - 4)}
+              </Text>
+              <Text wrap="truncate">
+                <Text color="green">{g.on}</Text>
+                <Text color="gray">{g.off}</Text>
+                <Text bold>{` ${done}/${total}`}</Text>
+              </Text>
+              <Text wrap="truncate">
+                <Text color="green">{`✓ ${counts.done}`}</Text>
+                <Text dimColor>{'   '}</Text>
+                <Text color="cyan">{`◐ ${counts.in_progress}`}</Text>
+                <Text dimColor>{'   '}</Text>
+                <Text color="gray">{`○ ${counts.pending}`}</Text>
+                {counts.blocked > 0 ? <Text color="yellow">{`   ⏸ ${counts.blocked}`}</Text> : null}
+                {counts.failed > 0 ? <Text color="red">{`   ✗ ${counts.failed}`}</Text> : null}
+                {running > 0 ? <Text color="cyan">{`   ${t.activeAgents(running)}`}</Text> : null}
+              </Text>
+            </Box>,
+          )}
+          {actions}
+          {notice}
+          {b.isResumed ? <Text dimColor>{t.resumedBanner}</Text> : null}
+          <Box flexDirection="column" width={W}>
+            {b.tasks.map((task, i) => taskView(task, i))}
+          </Box>
+          {b.looseAgents.length > 0 ? (
+            <Text dimColor wrap="truncate">{t.looseAgents(b.looseAgents.map(a => a.name).join(', '))}</Text>
+          ) : null}
+          <Text dimColor wrap="truncate">
+            {v.expanded !== null ? t.helpTask : t.helpBoard}
+          </Text>
         </Box>
-        {b.looseAgents.length > 0 ? (
-          <Text dimColor wrap="truncate">{t.looseAgents(b.looseAgents.map(a => a.name).join(', '))}</Text>
-        ) : null}
-        <Text dimColor wrap="truncate">
-          {v.expanded !== null ? t.helpTask : t.helpBoard}
-        </Text>
         {place}
       </Box>
     )

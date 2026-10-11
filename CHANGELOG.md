@@ -15,7 +15,7 @@ All notable changes to this project are documented here. The format follows
   (`t2: review types`).
 - History detail and resuming a past plan from the panel.
 - `planMode` option (`block`, `warn`, `off`) and a visible notice with a "skip plan" button.
-- The panel footer shows the project root and the git branch (read from `.git/HEAD`, no process).
+- The panel footer shows the project root and the git branch (read from `.git/HEAD`, no process), pinned to the bottom edge of the panel.
 
 ### Changed
 - A long request no longer counts as complex unless it names an action.
