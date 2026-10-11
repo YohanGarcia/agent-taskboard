@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [0.4.0] - Unreleased
+## [0.4.0] - 2026-10-10
 
 ### Added
 - Tokens per task: the main agent's and its subagents', split into fresh input, output and cache.
@@ -13,6 +13,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 - Stored plans from older versions are brought up to the new shape when they are restored.
+- Option titles and descriptions in the manifest are bilingual (Spanish / English).
 
 ## [0.3.0] - 2026-10-10
 
