@@ -136,3 +136,24 @@ test('isPlanFile reconoce .claude/plans en Windows y POSIX', () => {
   expect(isPlanFile('/proyecto/src/plans/x.ts')).toBe(false)
   expect(isPlanFile(undefined)).toBe(false)
 })
+
+test('modo ligero: no bloquea Edit/Write y sigue reflejando TodoWrite', { options: { language: 'es', mode: 'light' } }, async ($, on) => {
+  mock.clock(on, { now: 1_000 })
+  mock.store(on)
+  on('session.cwd', () => ({ value: '/proyecto' }))
+  on('tool.call', { tool: 'Write' }, () => ({ result: 'escrito' }))
+  on('tool.call', { tool: 'TodoWrite' }, () => ({ result: 'ok' }))
+  on('prompt.submit', (_, e) => ({ text: e.text }))
+
+  await $.prompt.submit({
+    text: 'Quiero crear una utilidad nueva:\n1. diseñar\n2. implementar\n3. probar\n4. documentar',
+  })
+
+  // The same request that blocks Write in full mode leaves it alone here.
+  const code = await $.tool.call({ tool: 'Write', file_path: '/proyecto/src/a.ts', content: 'x' })
+  expect(code.deny).toBeUndefined()
+
+  await $.tool.call({ tool: 'TodoWrite', todos: [{ content: 'Única tarea', status: 'in_progress', activeForm: 'Haciendo' }] })
+  const shown = await $.command.run({ command: 'taskboard', args: 'stats' })
+  expect(String(shown.text)).toContain('Única tarea')
+})

@@ -383,12 +383,13 @@ function boardText(b: Board, t: Messages): string {
 }
 
 /** Tokens and cost per task, plus what the mod itself adds to every request (an estimate). */
-function statsText(b: Board, t: Messages): string {
-  const overheadRules = estimateTokens(t.planRules)
-  const overheadTools =
-    estimateTokens(
-      [t.planToolDescription, t.taskToolDescription, t.goalDescription, t.tasksDescription, t.idDescription, t.noteDescription].join(' '),
-    ) + 70
+function statsText(b: Board, t: Messages, isLight = false): string {
+  const overheadRules = isLight ? 0 : estimateTokens(t.planRules)
+  const overheadTools = isLight
+    ? 0
+    : estimateTokens(
+        [t.planToolDescription, t.taskToolDescription, t.goalDescription, t.tasksDescription, t.idDescription, t.noteDescription].join(' '),
+      ) + 70
   const overhead = t.statsOverhead(fmtTokens(overheadRules), fmtTokens(overheadTools), fmtTokens(overheadRules + overheadTools))
   if (b.tasks.length === 0 && billableOf(b.untracked) === 0) return `${t.statsNoPlan}\n${overhead}`
 
@@ -413,8 +414,11 @@ function statsText(b: Board, t: Messages): string {
 export const register: Register = (on, options) => {
   const isOpenOnStart = options.openOnStart !== false
   const planMode = options.planMode === 'warn' || options.planMode === 'off' ? options.planMode : 'block'
-  const isEnforcing = planMode === 'block'
-  const isFlagging = planMode !== 'off'
+  // Light mode: no tools of its own, no rules in the prompt, no guard. The board only mirrors
+  // Claude Code's plan mode and TodoWrite, and keeps its time, checks and token accounting.
+  const isLight = options.mode === 'light'
+  const isEnforcing = !isLight && planMode === 'block'
+  const isFlagging = !isLight && planMode !== 'off'
   const minChars = Number(options.minPromptChars) > 0 ? Number(options.minPromptChars) : 240
   const extraChecks = String(options.extraChecks ?? '')
     .split(',')
@@ -428,7 +432,7 @@ export const register: Register = (on, options) => {
       description: t.commandDescription,
       argumentHint: '[open|close|history [drop <n>|clear]|clear|skip|stats]',
     })
-    await $.tool.register({
+    if (!isLight) await $.tool.register({
       name: 'plan',
       description: t.planToolDescription,
       inputSchema: {
@@ -441,7 +445,7 @@ export const register: Register = (on, options) => {
       },
       isDeferred: false,
     })
-    await $.tool.register({
+    if (!isLight) await $.tool.register({
       name: 'task',
       description: t.taskToolDescription,
       inputSchema: {
@@ -465,6 +469,7 @@ export const register: Register = (on, options) => {
 
   on('prompt.compose', async ($, e, next) => {
     const composed = await next(e)
+    if (isLight) return composed
 
     return { sections: [...composed.sections, { id: 'agent-taskboard:plan', text: t.planRules, scope: 'session' as const }] }
   }).catch(($, e, next) => next(e))
@@ -620,7 +625,7 @@ export const register: Register = (on, options) => {
       await clearBoard($)
       return { text: t.cleared }
     }
-    if (verb === 'stats') return { text: statsText(await read($, boardAtom), t) }
+    if (verb === 'stats') return { text: statsText(await read($, boardAtom), t, isLight) }
     if (verb === 'skip') {
       await update($, boardAtom, x => ({ ...x, needsPlan: false }))
       return { text: t.skipped }

@@ -1,6 +1,6 @@
 {
   "name": "agent-taskboard",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "A live task board for Claude Code: plans before building and shows every task, its status, time, subagents and checks in a side panel. Progress survives sessions.",
   "author": {
     "name": "Yohan Garcia",
@@ -32,6 +32,16 @@
       "description": "Longitud mínima (caracteres) de una solicitud para considerarla compleja; también la detectan varias acciones o listas / Minimum length (characters) for a request to count as complex; several actions or lists also trigger it",
       "type": "number",
       "default": 240
+    },
+    "mode": {
+      "title": "Modo / Mode",
+      "description": "full: herramientas plan/task, reglas en el prompt y guard; light: sin herramientas ni reglas, solo refleja el plan nativo y TodoWrite (sin sobrecosto de tokens) / full: plan/task tools, prompt rules and guard; light: no tools or rules, only mirrors the native plan and TodoWrite (no token overhead)",
+      "type": "string",
+      "options": [
+        "full",
+        "light"
+      ],
+      "default": "full"
     },
     "planMode": {
       "title": "Modo del plan / Plan mode",

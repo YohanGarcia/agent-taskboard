@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-10-13
+
+### Added
+- `mode` option: `full` (default, as before) or `light`. In `light` the mod registers no `plan`/`task`
+  tools, adds no rules to the prompt and does not guard `Edit`/`Write`; it only mirrors plan mode and
+  `TodoWrite` and keeps time, checks and token accounting, with no per-request overhead.
+
 ## [0.6.0] - 2026-10-11
 
 ### Added

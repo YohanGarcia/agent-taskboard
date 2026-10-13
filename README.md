@@ -71,7 +71,8 @@ Run `/plugin configure agent-taskboard@agent-taskboard` or set them in settings 
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `language` | `auto` | `auto` follows the system locale (Spanish for `es-*`, English otherwise), or force `es` / `en` |
-| `planMode` | `block` | `block` blocks Edit/Write until there is a plan, `warn` only shows a notice, `off` does nothing |
+| `mode` | `full` | `full` registers the `plan`/`task` tools, adds the rules to the prompt and guards `Edit`/`Write`. `light` does none of that: no tools, no prompt rules, no guard; the board only mirrors plan mode and `TodoWrite` and keeps its time, checks and token accounting (no per-request overhead) |
+| `planMode` | `block` | (only in `full`) `block` blocks Edit/Write until there is a plan, `warn` only shows a notice, `off` does nothing |
 | `minPromptChars` | `240` | Length above which a request that names an action counts as complex |
 | `extraChecks` | empty | Extra commands that count as a check, comma separated (`artisan test, composer test`) |
 | `openOnStart` | `true` | Open the panel when a session starts |
@@ -114,6 +115,7 @@ Layout: `hooks/register.tsx` (the hooks and the panel), `hooks/logic.ts` (pure f
 ```
 
 - **Plan nativo y lista de tareas:** el plan que apruebas en modo plan y la lista `TodoWrite` de Claude Code aparecen solos en el tablero, con sus estados.
+- **Modo ligero:** con `mode: light` no registra herramientas, no añade reglas al prompt ni bloquea Edit/Write; solo refleja el plan nativo y `TodoWrite`. Sin sobrecosto de tokens. `full` es el valor por defecto.
 - **Limpiar el historial:** `/taskboard history drop <n>` borra una entrada (1 es la más reciente), `/taskboard history clear` lo vacía, y en el detalle de una entrada la tecla `x` la borra.
 - **Tiempo de trabajo:** la duración de un plan suma solo los tramos en que hubo trabajo; las horas con el plan abierto entre sesiones no cuentan.
 - **Estados desde eventos reales:** una verificación que falla (tests, build, lint, tsc) impide marcar la tarea como hecha.
